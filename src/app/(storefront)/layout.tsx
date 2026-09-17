@@ -6,7 +6,7 @@ export default async function StorefrontLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <Header isAuthenticated={!!session} />
+      <Header user={session ? { role: session.user.role } : null} />
       <main className="flex flex-1 flex-col">{children}</main>
     </div>
   );

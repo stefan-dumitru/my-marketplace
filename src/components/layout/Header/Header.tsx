@@ -11,29 +11,51 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import type { UserRole } from "@/generated/prisma/enums";
 
 type Props = {
-  isAuthenticated: boolean;
+  user: { role: UserRole } | null;
 };
 
-export function Header({ isAuthenticated }: Props) {
+function roleNav(user: Props["user"]) {
+  if (!user) return { href: "/auth/login", label: "Log in" };
+  if (user.role === "seller") return { href: "/seller", label: "Seller Dashboard" };
+  if (user.role === "admin") return { href: "/admin", label: "Admin" };
+  return { href: "/sell", label: "Sell on My Marketplace" };
+}
+
+export function Header({ user }: Props) {
   const [open, setOpen] = useState(false);
-  const accountHref = isAuthenticated ? "/account" : "/auth/login";
-  const accountLabel = isAuthenticated ? "Account" : "Log in";
+  const accountHref = user ? "/account" : "/auth/login";
+  const accountLabel = user ? "Account" : "Log in";
+  const secondary = user ? roleNav(user) : null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-        <Link href="/" className="text-lg font-semibold text-foreground">
-          My Marketplace
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link href="/" className="text-lg font-semibold text-foreground">
+            My Marketplace
+          </Link>
+          <Link
+            href="/products"
+            className="hidden text-sm text-muted-foreground hover:text-foreground lg:block"
+          >
+            Products
+          </Link>
+        </div>
 
         {/* Desktop nav: >1024px per ui-guidelines.md breakpoints */}
         <nav className="hidden items-center gap-2 lg:flex">
+          {secondary && (
+            <Link href={secondary.href} className={buttonVariants({ variant: "ghost" })}>
+              {secondary.label}
+            </Link>
+          )}
           <Link href={accountHref} className={buttonVariants({ variant: "ghost" })}>
             {accountLabel}
           </Link>
-          {!isAuthenticated && (
+          {!user && (
             <Link href="/auth/register" className={buttonVariants()}>
               Sign up
             </Link>
@@ -54,13 +76,29 @@ export function Header({ isAuthenticated }: Props) {
             </SheetHeader>
             <nav className="flex flex-col gap-2 px-4">
               <Link
+                href="/products"
+                onClick={() => setOpen(false)}
+                className={buttonVariants({ variant: "outline", className: "justify-start" })}
+              >
+                Products
+              </Link>
+              {secondary && (
+                <Link
+                  href={secondary.href}
+                  onClick={() => setOpen(false)}
+                  className={buttonVariants({ variant: "outline", className: "justify-start" })}
+                >
+                  {secondary.label}
+                </Link>
+              )}
+              <Link
                 href={accountHref}
                 onClick={() => setOpen(false)}
                 className={buttonVariants({ variant: "outline", className: "justify-start" })}
               >
                 {accountLabel}
               </Link>
-              {!isAuthenticated && (
+              {!user && (
                 <Link
                   href="/auth/register"
                   onClick={() => setOpen(false)}
