@@ -1,0 +1,57 @@
+// Prisma schema — auth-only foundation.
+// See specifications/data-model.md for the full target model; only the User entity and our own
+// VerificationToken table are scaffolded here.
+//
+// Note: Auth.js's Credentials provider never creates a database session (confirmed against
+// @auth/core's actual callback code, not just docs) — sessions are JWT-based, with a
+// `sessionVersion` counter here used to force-invalidate outstanding tokens server-side (see
+// src/lib/auth.ts). The Account/Session adapter tables aren't needed without an OAuth provider;
+// add them back if one is introduced later.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  buyer
+  seller
+  admin
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+model User {
+  id              String     @id @default(cuid())
+  email           String     @unique
+  passwordHash    String
+  name            String
+  phone           String?
+  role            UserRole   @default(buyer)
+  status          UserStatus @default(active)
+  emailVerifiedAt DateTime?
+  suspendedAt     DateTime?
+  // Bump to force-invalidate every outstanding JWT for this user (logout-everywhere, suspension,
+  // role/privilege change) — see src/lib/auth.ts's jwt callback.
+  sessionVersion  Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
