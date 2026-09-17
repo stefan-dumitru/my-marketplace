@@ -3,7 +3,7 @@ import { getSellerContext } from "@/server/services/seller-service";
 import { listProductsForSeller } from "@/server/services/product-service";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatPrice } from "@/lib/format";
+import { ProductRow } from "@/components/seller/ProductRow";
 
 export default async function SellerDashboardPage() {
   // Non-null: the (seller) layout already redirected away any non-approved seller.
@@ -27,22 +27,7 @@ export default async function SellerDashboardPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {products.map((product) => (
-            <Card key={product.id} className="flex items-center justify-between p-4 text-sm">
-              <div>
-                <p className="font-medium">{product.name}</p>
-                <p className="text-muted-foreground">
-                  {product.category.name} · SKU {product.sku}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="font-medium">
-                  {product.variants[0] ? formatPrice(product.variants[0].price) : "—"}
-                </p>
-                <p className="text-muted-foreground">
-                  {product.variants[0]?.stockQty ?? 0} in stock
-                </p>
-              </div>
-            </Card>
+            <ProductRow key={product.id} product={product} />
           ))}
         </div>
       )}

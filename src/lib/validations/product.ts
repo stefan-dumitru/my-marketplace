@@ -17,3 +17,11 @@ export type CreateProductInput = z.output<typeof createProductSchema>;
 // z.coerce.number() fields start as whatever the <input> gives it (string) until the resolver
 // runs. useForm() must be typed with this, not the output type, or zodResolver's types conflict.
 export type CreateProductFormInput = z.input<typeof createProductSchema>;
+
+// SKU is immutable after creation (it's the natural/matching key — see data-model.md), so the
+// update path never accepts it. Server-side only: the edit form still uses createProductSchema's
+// types for its own RHF generic (see ProductForm) to avoid a component whose hook type would need
+// to vary by a runtime mode prop — this schema is the actual validation authority for edits.
+export const updateProductSchema = createProductSchema.omit({ sku: true });
+export type UpdateProductInput = z.output<typeof updateProductSchema>;
+export type UpdateProductFormInput = z.input<typeof updateProductSchema>;

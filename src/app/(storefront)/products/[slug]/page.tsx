@@ -2,6 +2,12 @@ import { notFound } from "next/navigation";
 import { getProductForStorefront } from "@/server/services/product-service";
 import { formatPrice } from "@/lib/format";
 
+// No dynamic API usage here at all (no auth/cookies, no searchParams) — without this, Next's
+// Full Route Cache would render this page once per slug and keep serving that same snapshot on
+// every later request, so a price/stock update or a deactivation would never actually show up
+// (confirmed during testing: a deactivated product kept 200-ing here instead of 404ing).
+export const dynamic = "force-dynamic";
+
 type Props = {
   params: Promise<{ slug: string }>;
 };

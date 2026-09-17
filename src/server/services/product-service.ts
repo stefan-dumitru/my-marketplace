@@ -1,17 +1,31 @@
 import "server-only";
-import { createProductSchema, type CreateProductInput } from "@/lib/validations/product";
+import {
+  createProductSchema,
+  updateProductSchema,
+  type CreateProductInput,
+  type UpdateProductInput,
+} from "@/lib/validations/product";
 import {
   createProductForSeller,
+  getProductByIdForSeller,
   getProductBySellerAndSku,
   getProductBySlug,
   listActiveProducts,
   listProductsForSeller as listProductsForSellerData,
+  setProductStatusForSeller,
+  updateProductForSeller,
 } from "@/server/data/products";
 import { slugify } from "@/lib/slug";
 
 export type CreateProductResult =
   | { ok: true }
   | { ok: false; fieldErrors?: Partial<Record<keyof CreateProductInput, string>>; formError?: string };
+
+export type UpdateProductResult =
+  | { ok: true }
+  | { ok: false; fieldErrors?: Partial<Record<keyof UpdateProductInput, string>>; formError?: string };
+
+export type ToggleStatusResult = { ok: true } | { ok: false; formError: string };
 
 async function uniqueProductSlug(name: string): Promise<string> {
   const base = slugify(name) || "product";
@@ -56,11 +70,58 @@ export async function createProduct(
   return { ok: true };
 }
 
+export function getProductForSellerEdit(sellerId: string, productId: string) {
+  return getProductByIdForSeller(sellerId, productId);
+}
+
+export async function updateProduct(
+  sellerId: string,
+  productId: string,
+  input: UpdateProductInput
+): Promise<UpdateProductResult> {
+  const parsed = updateProductSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, formError: "Please fix the errors above and try again." };
+  }
+  const { categoryId, name, description, brand, imageUrl, price, stockQty } = parsed.data;
+
+  const updated = await updateProductForSeller(sellerId, productId, {
+    categoryId,
+    name,
+    description: description || undefined,
+    brand: brand || undefined,
+    images: imageUrl ? [imageUrl] : [],
+    price,
+    stockQty,
+  });
+
+  if (!updated) {
+    return { ok: false, formError: "Product not found." };
+  }
+  return { ok: true };
+}
+
+export async function setProductActive(
+  sellerId: string,
+  productId: string,
+  active: boolean
+): Promise<ToggleStatusResult> {
+  const updated = await setProductStatusForSeller(sellerId, productId, active ? "active" : "inactive");
+  if (!updated) {
+    return { ok: false, formError: "Product not found." };
+  }
+  return { ok: true };
+}
+
 export function listProductsForSeller(sellerId: string) {
   return listProductsForSellerData(sellerId);
 }
 
-export function listActiveProductsForStorefront(opts?: { take?: number }) {
+export function listActiveProductsForStorefront(opts?: {
+  take?: number;
+  q?: string;
+  categorySlug?: string;
+}) {
   return listActiveProducts(opts);
 }
 

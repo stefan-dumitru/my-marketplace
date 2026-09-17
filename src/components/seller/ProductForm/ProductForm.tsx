@@ -20,12 +20,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createProductAction } from "@/app/(seller)/seller/products/new/actions";
+import { updateProductAction } from "@/app/(seller)/seller/products/[id]/edit/actions";
 
 type Props = {
   categories: { id: string; name: string }[];
+  mode?: "create" | "edit";
+  /** Required (with `id`) when mode is "edit". */
+  initialValues?: Partial<CreateProductFormInput> & { id: string };
 };
 
-export function ProductForm({ categories }: Props) {
+export function ProductForm({ categories, mode = "create", initialValues }: Props) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const {
@@ -36,11 +40,18 @@ export function ProductForm({ categories }: Props) {
     formState: { errors, isSubmitting },
   } = useForm<CreateProductFormInput, unknown, CreateProductInput>({
     resolver: zodResolver(createProductSchema),
+    defaultValues: initialValues,
   });
 
   const onSubmit = async (data: CreateProductInput) => {
     setFormError(null);
-    const result = await createProductAction(data);
+
+    // Edit mode always validates/submits against updateProductSchema server-side, which has no
+    // sku field at all — sku is stripped here for tidiness, not as the actual security boundary.
+    const result =
+      mode === "edit" && initialValues
+        ? await updateProductAction(initialValues.id, (({ sku: _sku, ...rest }) => rest)(data))
+        : await createProductAction(data);
 
     if (result.ok) {
       router.push("/seller");
@@ -107,8 +118,12 @@ export function ProductForm({ categories }: Props) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="sku">SKU</Label>
-        <Input id="sku" aria-invalid={!!errors.sku} {...register("sku")} />
-        {errors.sku && <p className="text-sm text-destructive">{errors.sku.message}</p>}
+        <Input id="sku" aria-invalid={!!errors.sku} disabled={mode === "edit"} {...register("sku")} />
+        {mode === "edit" ? (
+          <p className="text-sm text-muted-foreground">SKU can&apos;t be changed after creation.</p>
+        ) : (
+          errors.sku && <p className="text-sm text-destructive">{errors.sku.message}</p>
+        )}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -148,7 +163,13 @@ export function ProductForm({ categories }: Props) {
       </div>
 
       <Button type="submit" disabled={isSubmitting} className="mt-2">
-        {isSubmitting ? "Creating…" : "Create product"}
+        {isSubmitting
+          ? mode === "edit"
+            ? "Saving…"
+            : "Creating…"
+          : mode === "edit"
+            ? "Save changes"
+            : "Create product"}
       </Button>
     </form>
   );
