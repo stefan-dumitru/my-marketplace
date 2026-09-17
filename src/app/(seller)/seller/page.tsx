@@ -15,9 +15,14 @@ export default async function SellerDashboardPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{profile.storeName}</h1>
-        <Link href="/seller/products/new" className={buttonVariants()}>
-          Add product
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/seller/orders" className={buttonVariants({ variant: "outline" })}>
+            Orders
+          </Link>
+          <Link href="/seller/products/new" className={buttonVariants()}>
+            Add product
+          </Link>
+        </div>
       </div>
 
       {products.length === 0 ? (

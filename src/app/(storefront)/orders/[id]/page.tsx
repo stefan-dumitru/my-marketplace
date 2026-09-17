@@ -58,6 +58,8 @@ export default async function OrderDetailPage({ params }: Props) {
             <p className="font-medium">{sellerOrder.seller.storeName}</p>
             <p className="text-muted-foreground">
               {SELLER_ORDER_STATUS_LABEL[sellerOrder.status] ?? sellerOrder.status}
+              {sellerOrder.status === "cancelled" &&
+                (sellerOrder.refundedAt ? " — Refunded" : " — Refund pending")}
             </p>
           </div>
           <div className="divide-y">

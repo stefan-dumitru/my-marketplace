@@ -243,6 +243,9 @@ model SellerOrder {
   shippedAt        DateTime?
   deliveredAt      DateTime?
   cancelledAt      DateTime?
+  // Distinct from cancelledAt so a cancel retry can tell "DB side done" from "refund still
+  // pending" and only redo the Stripe call, not the stock release — see seller-order-service.ts.
+  refundedAt       DateTime?
 
   order  Order         @relation(fields: [orderId], references: [id])
   seller SellerProfile @relation(fields: [sellerId], references: [id])
