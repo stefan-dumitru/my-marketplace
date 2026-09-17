@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu } from "lucide-react";
+import { Menu, ShoppingCart } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -14,7 +14,7 @@ import {
 import type { UserRole } from "@/generated/prisma/enums";
 
 type Props = {
-  user: { role: UserRole } | null;
+  user: { role: UserRole; cartItemCount: number } | null;
 };
 
 function roleNav(user: Props["user"]) {
@@ -22,6 +22,21 @@ function roleNav(user: Props["user"]) {
   if (user.role === "seller") return { href: "/seller", label: "Seller Dashboard" };
   if (user.role === "admin") return { href: "/admin", label: "Admin" };
   return { href: "/sell", label: "Sell on My Marketplace" };
+}
+
+function CartLink({ count }: { count: number }) {
+  return (
+    <Link href="/cart" className="relative inline-flex" aria-label="Cart">
+      <Button variant="ghost" size="icon">
+        <ShoppingCart />
+      </Button>
+      {count > 0 && (
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sale px-1 text-[10px] font-medium text-sale-foreground">
+          {count}
+        </span>
+      )}
+    </Link>
+  );
 }
 
 export function Header({ user }: Props) {
@@ -47,6 +62,7 @@ export function Header({ user }: Props) {
 
         {/* Desktop nav: >1024px per ui-guidelines.md breakpoints */}
         <nav className="hidden items-center gap-2 lg:flex">
+          {user && <CartLink count={user.cartItemCount} />}
           {secondary && (
             <Link href={secondary.href} className={buttonVariants({ variant: "ghost" })}>
               {secondary.label}
@@ -63,53 +79,54 @@ export function Header({ user }: Props) {
         </nav>
 
         {/* Mobile/tablet nav: <1024px, hamburger trigger */}
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger
-            render={<Button variant="ghost" size="icon" className="lg:hidden" />}
-          >
-            <Menu />
-            <span className="sr-only">Open menu</span>
-          </SheetTrigger>
-          <SheetContent side="right">
-            <SheetHeader>
-              <SheetTitle>Menu</SheetTitle>
-            </SheetHeader>
-            <nav className="flex flex-col gap-2 px-4">
-              <Link
-                href="/products"
-                onClick={() => setOpen(false)}
-                className={buttonVariants({ variant: "outline", className: "justify-start" })}
-              >
-                Products
-              </Link>
-              {secondary && (
+        <div className="flex items-center gap-1 lg:hidden">
+          {user && <CartLink count={user.cartItemCount} />}
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetTrigger render={<Button variant="ghost" size="icon" />}>
+              <Menu />
+              <span className="sr-only">Open menu</span>
+            </SheetTrigger>
+            <SheetContent side="right">
+              <SheetHeader>
+                <SheetTitle>Menu</SheetTitle>
+              </SheetHeader>
+              <nav className="flex flex-col gap-2 px-4">
                 <Link
-                  href={secondary.href}
+                  href="/products"
                   onClick={() => setOpen(false)}
                   className={buttonVariants({ variant: "outline", className: "justify-start" })}
                 >
-                  {secondary.label}
+                  Products
                 </Link>
-              )}
-              <Link
-                href={accountHref}
-                onClick={() => setOpen(false)}
-                className={buttonVariants({ variant: "outline", className: "justify-start" })}
-              >
-                {accountLabel}
-              </Link>
-              {!user && (
+                {secondary && (
+                  <Link
+                    href={secondary.href}
+                    onClick={() => setOpen(false)}
+                    className={buttonVariants({ variant: "outline", className: "justify-start" })}
+                  >
+                    {secondary.label}
+                  </Link>
+                )}
                 <Link
-                  href="/auth/register"
+                  href={accountHref}
                   onClick={() => setOpen(false)}
-                  className={buttonVariants({ className: "justify-start" })}
+                  className={buttonVariants({ variant: "outline", className: "justify-start" })}
                 >
-                  Sign up
+                  {accountLabel}
                 </Link>
-              )}
-            </nav>
-          </SheetContent>
-        </Sheet>
+                {!user && (
+                  <Link
+                    href="/auth/register"
+                    onClick={() => setOpen(false)}
+                    className={buttonVariants({ className: "justify-start" })}
+                  >
+                    Sign up
+                  </Link>
+                )}
+              </nav>
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
     </header>
   );

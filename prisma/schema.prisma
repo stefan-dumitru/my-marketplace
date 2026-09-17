@@ -43,6 +43,8 @@ model User {
   updatedAt       DateTime   @updatedAt
 
   sellerProfile SellerProfile?
+  cart          Cart?
+  orders        Order[]
 
   @@map("users")
 }
@@ -90,8 +92,9 @@ model SellerProfile {
   approvedAt                 DateTime?
   suspendedAt                DateTime?
 
-  user     User      @relation(fields: [userId], references: [id])
-  products Product[]
+  user         User          @relation(fields: [userId], references: [id])
+  products     Product[]
+  sellerOrders SellerOrder[]
 
   @@map("seller_profiles")
 }
@@ -152,6 +155,131 @@ model ProductVariant {
 
   product Product @relation(fields: [productId], references: [id])
 
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
   @@index([productId])
   @@map("product_variants")
+}
+
+// --- Cart + checkout ---
+// No guest cart, no reusable Address book, no shipping fee/tax, no stock-reservation/TTL, no
+// Stripe Connect payouts — see the "Cart & Checkout" plan for why each is deferred.
+
+enum OrderStatus {
+  pending_payment
+  paid
+  payment_failed
+}
+
+enum SellerOrderStatus {
+  pending
+  confirmed
+  shipped
+  delivered
+  cancelled
+  returned
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+  refunded
+}
+
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  updatedAt DateTime @updatedAt
+
+  user  User       @relation(fields: [userId], references: [id])
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id               String @id @default(cuid())
+  cartId           String
+  productVariantId String
+  quantity         Int
+
+  cart           Cart           @relation(fields: [cartId], references: [id])
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@unique([cartId, productVariantId])
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+model Order {
+  id                      String      @id @default(cuid())
+  orderNumber             String      @unique
+  buyerId                 String
+  status                  OrderStatus @default(pending_payment)
+  totalAmount             Decimal     @db.Decimal(10, 2)
+  currency                String      @default("RON")
+  shippingAddressSnapshot Json
+  createdAt               DateTime    @default(now())
+
+  buyer        User          @relation(fields: [buyerId], references: [id])
+  sellerOrders SellerOrder[]
+  payment      Payment?
+
+  @@index([buyerId])
+  @@map("orders")
+}
+
+model SellerOrder {
+  id               String            @id @default(cuid())
+  orderId          String
+  sellerId         String
+  status           SellerOrderStatus @default(pending)
+  subtotal         Decimal           @db.Decimal(10, 2)
+  commissionAmount Decimal           @db.Decimal(10, 2)
+  payoutAmount     Decimal           @default(0) @db.Decimal(10, 2)
+  trackingNumber   String?
+  shippedAt        DateTime?
+  deliveredAt      DateTime?
+  cancelledAt      DateTime?
+
+  order  Order         @relation(fields: [orderId], references: [id])
+  seller SellerProfile @relation(fields: [sellerId], references: [id])
+  items  OrderItem[]
+
+  @@index([orderId])
+  @@index([sellerId])
+  @@map("seller_orders")
+}
+
+model OrderItem {
+  id                  String  @id @default(cuid())
+  sellerOrderId       String
+  productVariantId    String
+  productNameSnapshot String
+  unitPriceSnapshot   Decimal @db.Decimal(10, 2)
+  quantity            Int
+  lineTotal           Decimal @db.Decimal(10, 2)
+
+  sellerOrder    SellerOrder    @relation(fields: [sellerOrderId], references: [id])
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([sellerOrderId])
+  @@index([productVariantId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  orderId               String        @unique
+  stripePaymentIntentId String?
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @default("RON")
+  status                PaymentStatus @default(pending)
+  paidAt                DateTime?
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
 }

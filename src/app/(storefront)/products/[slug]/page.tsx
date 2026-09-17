@@ -1,11 +1,15 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { getProductForStorefront } from "@/server/services/product-service";
 import { formatPrice } from "@/lib/format";
+import { auth } from "@/lib/auth";
+import { buttonVariants } from "@/components/ui/button";
+import { AddToCartForm } from "@/components/product/AddToCartForm";
 
-// No dynamic API usage here at all (no auth/cookies, no searchParams) — without this, Next's
-// Full Route Cache would render this page once per slug and keep serving that same snapshot on
-// every later request, so a price/stock update or a deactivation would never actually show up
-// (confirmed during testing: a deactivated product kept 200-ing here instead of 404ing).
+// Price/stock/status must never be served stale — this invariant is about the data, not about
+// which dynamic API happens to be present, so it stays an explicit export even though auth()
+// below would also force dynamic rendering on its own (confirmed during a prior increment: Next's
+// Full Route Cache otherwise renders this once per slug and keeps serving that same snapshot).
 export const dynamic = "force-dynamic";
 
 type Props = {
@@ -14,7 +18,7 @@ type Props = {
 
 export default async function ProductDetailPage({ params }: Props) {
   const { slug } = await params;
-  const product = await getProductForStorefront(slug);
+  const [product, session] = await Promise.all([getProductForStorefront(slug), auth()]);
   if (!product) notFound();
 
   const variant = product.variants[0];
@@ -43,6 +47,18 @@ export default async function ProductDetailPage({ params }: Props) {
             {variant.stockQty > 0 ? `${variant.stockQty} in stock` : "Out of stock"}
           </p>
         )}
+
+        {variant &&
+          (session ? (
+            <AddToCartForm productVariantId={variant.id} stockQty={variant.stockQty} />
+          ) : (
+            <Link
+              href={`/auth/login?callbackUrl=/products/${slug}`}
+              className={buttonVariants({ className: "w-fit" })}
+            >
+              Log in to buy
+            </Link>
+          ))}
       </div>
     </div>
   );
