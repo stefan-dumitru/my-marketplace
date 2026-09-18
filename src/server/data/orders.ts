@@ -128,6 +128,9 @@ export async function createOrderFromCart(input: {
           sellerId,
           subtotal,
           commissionAmount,
+          // Frozen at sale time alongside commissionAmount, same invariant — never
+          // retroactively recomputed later at payout time.
+          payoutAmount: subtotal - commissionAmount,
           items: {
             create: items.map((i) => ({
               productVariantId: i.productVariantId,

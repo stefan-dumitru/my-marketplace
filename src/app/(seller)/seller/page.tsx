@@ -19,6 +19,9 @@ export default async function SellerDashboardPage() {
           <Link href="/seller/orders" className={buttonVariants({ variant: "outline" })}>
             Orders
           </Link>
+          <Link href="/seller/payouts" className={buttonVariants({ variant: "outline" })}>
+            Payouts
+          </Link>
           <Link href="/seller/products/new" className={buttonVariants()}>
             Add product
           </Link>

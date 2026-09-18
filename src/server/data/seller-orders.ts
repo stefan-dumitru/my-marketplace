@@ -113,3 +113,50 @@ export function markSellerOrderRefunded(sellerOrderId: string) {
     data: { refundedAt: new Date() },
   });
 }
+
+const PAYOUT_READY_INCLUDE = {
+  seller: { select: { storeName: true, stripeConnectAccountId: true } },
+  order: { select: { orderNumber: true } },
+} as const;
+
+// payoutAmount > 0 excludes orders that predate this increment's fix to actually compute it at
+// checkout (they're permanently stuck at 0) — Stripe rejects a zero-amount Transfer outright
+// ("must be greater than or equal to 1"), so there's nothing releasable for those historical rows.
+export function listPayoutReadySellerOrdersForAdmin() {
+  return prisma.sellerOrder.findMany({
+    where: { status: "delivered", payoutAt: null, payoutAmount: { gt: 0 }, seller: { payoutsEnabled: true } },
+    orderBy: { deliveredAt: "asc" },
+    include: PAYOUT_READY_INCLUDE,
+  });
+}
+
+export function getPayoutReadySellerOrderById(sellerOrderId: string) {
+  return prisma.sellerOrder.findFirst({
+    where: {
+      id: sellerOrderId,
+      status: "delivered",
+      payoutAt: null,
+      payoutAmount: { gt: 0 },
+      seller: { payoutsEnabled: true },
+    },
+    include: PAYOUT_READY_INCLUDE,
+  });
+}
+
+/**
+ * Verify-then-update: only a currently-"delivered", not-yet-paid-out order can be released, so
+ * a double-click (or a retried action after a transient failure) can't trigger a second Transfer
+ * — see payout-service.ts's releasePayout for the full idempotent-retry orchestration.
+ */
+export async function markSellerOrderPaidOut(sellerOrderId: string, stripeTransferId: string) {
+  const owned = await prisma.sellerOrder.findFirst({
+    where: { id: sellerOrderId, status: "delivered", payoutAt: null },
+    select: { id: true },
+  });
+  if (!owned) return null;
+
+  return prisma.sellerOrder.update({
+    where: { id: sellerOrderId },
+    data: { payoutAt: new Date(), stripeTransferId },
+  });
+}

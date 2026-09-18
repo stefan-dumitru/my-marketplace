@@ -70,6 +70,19 @@ export async function POST(req: Request) {
       break;
     }
 
+    case "account.updated": {
+      // Background sync for Connect onboarding status — connect-service.ts's
+      // reconcileConnectStatus is the belt-and-suspenders live check for the one page (seller
+      // payouts) that can't wait on webhook delivery; this keeps payoutsEnabled fresh everywhere
+      // else (notably: the admin payout queue, which reads it without a live Stripe call).
+      const account = event.data.object as Stripe.Account;
+      await prisma.sellerProfile.updateMany({
+        where: { stripeConnectAccountId: account.id },
+        data: { payoutsEnabled: account.payouts_enabled ?? false },
+      });
+      break;
+    }
+
     default:
       // Unhandled event types are acknowledged, not rejected — Stripe doesn't require every
       // type to be explicitly handled.

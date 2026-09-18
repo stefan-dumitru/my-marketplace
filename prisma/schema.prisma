@@ -87,6 +87,7 @@ model SellerProfile {
   logoUrl                    String?
   businessRegistrationNumber String
   stripeConnectAccountId     String?
+  payoutsEnabled             Boolean      @default(false)
   commissionRateOverride     Decimal?     @db.Decimal(5, 4)
   status                     SellerStatus @default(pending)
   appliedAt                  DateTime     @default(now())
@@ -248,6 +249,8 @@ model SellerOrder {
   // Distinct from cancelledAt so a cancel retry can tell "DB side done" from "refund still
   // pending" and only redo the Stripe call, not the stock release — see seller-order-service.ts.
   refundedAt       DateTime?
+  payoutAt         DateTime?
+  stripeTransferId String?
 
   order  Order         @relation(fields: [orderId], references: [id])
   seller SellerProfile @relation(fields: [sellerId], references: [id])

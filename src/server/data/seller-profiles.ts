@@ -129,3 +129,23 @@ export function setSellerCommissionOverride(sellerProfileId: string, rate: numbe
     data: { commissionRateOverride: rate },
   });
 }
+
+export function setSellerStripeAccount(sellerProfileId: string, stripeAccountId: string) {
+  return prisma.sellerProfile.update({
+    where: { id: sellerProfileId },
+    data: { stripeConnectAccountId: stripeAccountId },
+  });
+}
+
+export function getSellerProfileByStripeAccountId(stripeAccountId: string) {
+  return prisma.sellerProfile.findFirst({ where: { stripeConnectAccountId: stripeAccountId } });
+}
+
+/** Looked up by Stripe account id, not sellerProfileId — this is what both the webhook and the
+ * live-reconciliation check have on hand, never the internal id. */
+export function setSellerPayoutsEnabled(stripeAccountId: string, enabled: boolean) {
+  return prisma.sellerProfile.updateMany({
+    where: { stripeConnectAccountId: stripeAccountId },
+    data: { payoutsEnabled: enabled },
+  });
+}
