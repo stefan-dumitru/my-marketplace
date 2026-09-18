@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 
 export default async function AccountPage() {
@@ -19,6 +21,9 @@ export default async function AccountPage() {
           value={session.user.emailVerifiedAt ? "Yes" : "No — required before checkout"}
         />
       </Card>
+      <Link href="/account/addresses" className={buttonVariants({ variant: "outline" })}>
+        Manage addresses
+      </Link>
       <LogoutButton />
     </div>
   );

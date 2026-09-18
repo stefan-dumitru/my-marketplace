@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getCartWithItems } from "@/server/data/cart";
+import { getAddressesForAccount } from "@/server/services/address-service";
 import { Card } from "@/components/ui/card";
 import { AddressForm } from "@/components/checkout/AddressForm";
 import { formatPrice } from "@/lib/format";
@@ -11,19 +12,24 @@ export default async function CheckoutPage() {
   if (!session.user.emailVerifiedAt) redirect("/cart?verify=1");
 
   // Fetched fresh here — a separate request from the cart page, nothing caches this in between.
-  const { items } = await getCartWithItems(session.user.id);
+  const [{ items }, savedAddresses] = await Promise.all([
+    getCartWithItems(session.user.id),
+    getAddressesForAccount(session.user.id),
+  ]);
   if (items.length === 0) redirect("/cart");
 
   const grandTotal = items.reduce(
     (sum, item) => sum + Number(item.productVariant.price) * item.quantity,
     0
   );
+  // savedAddresses is already ordered default-first, so this is free — no separate query.
+  const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? null;
 
   return (
     <div className="mx-auto grid w-full max-w-4xl flex-1 gap-8 px-4 py-10 sm:grid-cols-2">
       <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-semibold">Shipping address</h1>
-        <AddressForm />
+        <AddressForm savedAddresses={savedAddresses} defaultAddress={defaultAddress} />
       </div>
 
       <div className="flex flex-col gap-4">
