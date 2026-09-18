@@ -1,10 +1,12 @@
 import "server-only";
 import { stripe } from "@/lib/stripe";
+import { sendEmail } from "@/lib/email";
 import { shipOrderSchema, type ShipOrderInput } from "@/lib/validations/seller-order";
 import {
   cancelSellerOrderTransaction,
   getSellerOrderByIdForSeller,
   listSellerOrdersForSeller,
+  markSellerOrderDeliveredForSeller,
   markSellerOrderRefunded,
   markSellerOrderShippedForSeller,
 } from "@/server/data/seller-orders";
@@ -41,6 +43,27 @@ export async function markShipped(
   if (!updated) {
     return { ok: false, formError: "This order can't be marked shipped right now." };
   }
+  return { ok: true };
+}
+
+export async function markDelivered(sellerId: string, sellerOrderId: string): Promise<ShipOrderResult> {
+  const updated = await markSellerOrderDeliveredForSeller(sellerId, sellerOrderId);
+  if (!updated) {
+    return { ok: false, formError: "This order can't be marked delivered right now." };
+  }
+
+  const buyerEmail = updated.order.buyer.email;
+  const orderNumber = updated.order.orderNumber;
+  await sendEmail({
+    to: buyerEmail,
+    subject: "Your order has been delivered",
+    html: `<p>Your order ${orderNumber} has been marked as delivered. Let us know what you think — you can now leave a review from your order page.</p>`,
+    text: `Your order ${orderNumber} has been marked as delivered. You can now leave a review from your order page.`,
+  }).catch(() => {
+    // Best-effort notification — see seller-service.ts's approveSellerApplication for the same
+    // pattern: an email failure shouldn't fail an otherwise-successful status change.
+  });
+
   return { ok: true };
 }
 

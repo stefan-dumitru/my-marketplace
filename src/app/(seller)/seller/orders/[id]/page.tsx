@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { formatPrice } from "@/lib/format";
 import { ShipOrderForm } from "@/components/seller/ShipOrderForm";
 import { CancelOrderButton } from "@/components/seller/CancelOrderButton";
+import { DeliverOrderButton } from "@/components/seller/DeliverOrderButton";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pending",
@@ -99,14 +100,26 @@ export default async function SellerOrderDetailPage({ params }: Props) {
       )}
 
       {sellerOrder.status === "shipped" && (
+        <Card className="flex flex-col gap-3 p-4 text-sm">
+          <div>
+            <p className="font-medium">Tracking number</p>
+            <p className="text-muted-foreground">{sellerOrder.trackingNumber}</p>
+            {sellerOrder.shippedAt && (
+              <p className="mt-1 text-muted-foreground">
+                Shipped {new Date(sellerOrder.shippedAt).toLocaleString("ro-RO")}
+              </p>
+            )}
+          </div>
+          <DeliverOrderButton sellerOrderId={sellerOrder.id} />
+        </Card>
+      )}
+
+      {sellerOrder.status === "delivered" && sellerOrder.deliveredAt && (
         <Card className="p-4 text-sm">
-          <p className="font-medium">Tracking number</p>
-          <p className="text-muted-foreground">{sellerOrder.trackingNumber}</p>
-          {sellerOrder.shippedAt && (
-            <p className="mt-1 text-muted-foreground">
-              Shipped {new Date(sellerOrder.shippedAt).toLocaleString("ro-RO")}
-            </p>
-          )}
+          <p className="font-medium">Delivered</p>
+          <p className="text-muted-foreground">
+            {new Date(sellerOrder.deliveredAt).toLocaleString("ro-RO")}
+          </p>
         </Card>
       )}
     </div>

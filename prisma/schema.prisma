@@ -45,6 +45,7 @@ model User {
   sellerProfile SellerProfile?
   cart          Cart?
   orders        Order[]
+  reviews       Review[]
 
   @@map("users")
 }
@@ -137,6 +138,7 @@ model Product {
   seller   SellerProfile    @relation(fields: [sellerId], references: [id])
   category Category         @relation(fields: [categoryId], references: [id])
   variants ProductVariant[]
+  reviews  Review[]
 
   @@unique([sellerId, sku])
   @@index([sellerId])
@@ -267,10 +269,38 @@ model OrderItem {
 
   sellerOrder    SellerOrder    @relation(fields: [sellerOrderId], references: [id])
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+  review         Review?
 
   @@index([sellerOrderId])
   @@index([productVariantId])
   @@map("order_items")
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+}
+
+model Review {
+  id          String       @id @default(cuid())
+  productId   String
+  buyerId     String
+  orderItemId String       @unique
+  rating      Int
+  title       String
+  body        String
+  status      ReviewStatus @default(pending)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  product   Product   @relation(fields: [productId], references: [id])
+  buyer     User      @relation(fields: [buyerId], references: [id])
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@index([productId, status])
+  @@index([status])
+  @@map("reviews")
 }
 
 model Payment {

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { getOrderByIdForBuyer } from "@/server/data/orders";
 import { Card } from "@/components/ui/card";
 import { formatPrice } from "@/lib/format";
+import { ReviewForm } from "@/components/review/ReviewForm";
 
 const STATUS_LABEL: Record<string, string> = {
   pending_payment: "Awaiting payment",
@@ -17,6 +18,12 @@ const SELLER_ORDER_STATUS_LABEL: Record<string, string> = {
   delivered: "Delivered",
   cancelled: "Cancelled",
   returned: "Returned",
+};
+
+const REVIEW_STATUS_LABEL: Record<string, string> = {
+  pending: "pending moderation",
+  approved: "published",
+  rejected: "not approved",
 };
 
 type Props = {
@@ -64,11 +71,26 @@ export default async function OrderDetailPage({ params }: Props) {
           </div>
           <div className="divide-y">
             {sellerOrder.items.map((item) => (
-              <div key={item.id} className="flex justify-between py-2">
-                <span>
-                  {item.productNameSnapshot} × {item.quantity}
-                </span>
-                <span>{formatPrice(item.lineTotal)}</span>
+              <div key={item.id} className="flex flex-col gap-2 py-2">
+                <div className="flex justify-between">
+                  <span>
+                    {item.productNameSnapshot} × {item.quantity}
+                  </span>
+                  <span>{formatPrice(item.lineTotal)}</span>
+                </div>
+                {sellerOrder.status === "delivered" &&
+                  (item.review ? (
+                    <p className="text-xs text-muted-foreground">
+                      You rated this {item.review.rating}/5 —{" "}
+                      {REVIEW_STATUS_LABEL[item.review.status] ?? item.review.status}
+                    </p>
+                  ) : (
+                    <ReviewForm
+                      orderId={order.id}
+                      orderItemId={item.id}
+                      productName={item.productNameSnapshot}
+                    />
+                  ))}
               </div>
             ))}
           </div>

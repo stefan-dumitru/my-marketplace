@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
   cancelSellerOrder,
+  markDelivered,
   markShipped,
   type CancelOrderResult,
   type ShipOrderResult,
@@ -22,6 +23,17 @@ export async function markShippedAction(
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
 
   const result = await markShipped(context.profile.id, sellerOrderId, input);
+  revalidatePath("/seller/orders");
+  revalidatePath(`/seller/orders/${sellerOrderId}`);
+  return result;
+}
+
+export async function markDeliveredAction(sellerOrderId: string): Promise<ShipOrderResult> {
+  const context = await getSellerContext();
+  if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
+  if (!context.profile || context.profile.status !== "approved") redirect("/sell");
+
+  const result = await markDelivered(context.profile.id, sellerOrderId);
   revalidatePath("/seller/orders");
   revalidatePath(`/seller/orders/${sellerOrderId}`);
   return result;

@@ -9,6 +9,7 @@ const SELLER_ORDER_INCLUDE = {
       shippingAddressSnapshot: true,
       createdAt: true,
       payment: { select: { stripePaymentIntentId: true } },
+      buyer: { select: { email: true } },
     },
   },
 } as const;
@@ -50,6 +51,24 @@ export async function markSellerOrderShippedForSeller(
   return prisma.sellerOrder.update({
     where: { id: sellerOrderId },
     data: { status: "shipped", shippedAt: new Date(), trackingNumber },
+  });
+}
+
+/**
+ * Verify-then-update, mirroring markSellerOrderShippedForSeller: only a currently-"shipped"
+ * order owned by this seller can be marked delivered.
+ */
+export async function markSellerOrderDeliveredForSeller(sellerId: string, sellerOrderId: string) {
+  const owned = await prisma.sellerOrder.findFirst({
+    where: { id: sellerOrderId, sellerId, status: "shipped" },
+    select: { id: true },
+  });
+  if (!owned) return null;
+
+  return prisma.sellerOrder.update({
+    where: { id: sellerOrderId },
+    data: { status: "delivered", deliveredAt: new Date() },
+    include: SELLER_ORDER_INCLUDE,
   });
 }
 

@@ -6,7 +6,7 @@ const ORDER_INCLUDE = {
   sellerOrders: {
     include: {
       seller: { select: { storeName: true, storeSlug: true } },
-      items: true,
+      items: { include: { review: true } },
     },
   },
   payment: true,
