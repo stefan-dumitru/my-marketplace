@@ -70,3 +70,62 @@ export function rejectSellerApplication(sellerProfileId: string) {
     data: { status: "rejected" },
   });
 }
+
+export function listApprovedSellerProfiles() {
+  return prisma.sellerProfile.findMany({
+    where: { status: "approved" },
+    orderBy: { storeName: "asc" },
+    include: { user: { select: { name: true, email: true } } },
+  });
+}
+
+export function listSuspendedSellerProfiles() {
+  return prisma.sellerProfile.findMany({
+    where: { status: "suspended" },
+    orderBy: { storeName: "asc" },
+    include: { user: { select: { name: true, email: true } } },
+  });
+}
+
+/**
+ * Suspends the seller AND deactivates their active listings in one transaction — matches
+ * functional.md's "suspension deactivates their listings but preserves order history" exactly
+ * (order/SellerOrder rows are never touched, only Product.status).
+ */
+export function suspendSellerProfileAndDeactivateProducts(sellerProfileId: string) {
+  return prisma.$transaction([
+    prisma.sellerProfile.update({
+      where: { id: sellerProfileId },
+      data: { status: "suspended", suspendedAt: new Date() },
+    }),
+    prisma.product.updateMany({
+      where: { sellerId: sellerProfileId, status: "active" },
+      data: { status: "inactive", deactivatedAt: new Date() },
+    }),
+  ]);
+}
+
+/**
+ * Verify-then-update: only a currently-suspended profile can be reinstated. Deliberately does
+ * NOT reactivate products — silently relisting a full catalog without re-review is riskier than
+ * requiring the seller to manually reactivate each listing via the existing toggle.
+ */
+export async function reinstateSellerProfile(sellerProfileId: string) {
+  const owned = await prisma.sellerProfile.findFirst({
+    where: { id: sellerProfileId, status: "suspended" },
+    select: { id: true },
+  });
+  if (!owned) return null;
+
+  return prisma.sellerProfile.update({
+    where: { id: sellerProfileId },
+    data: { status: "approved", suspendedAt: null },
+  });
+}
+
+export function setSellerCommissionOverride(sellerProfileId: string, rate: number | null) {
+  return prisma.sellerProfile.update({
+    where: { id: sellerProfileId },
+    data: { commissionRateOverride: rate },
+  });
+}

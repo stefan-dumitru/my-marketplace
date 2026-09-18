@@ -6,12 +6,15 @@ import {
   type UpdateProductInput,
 } from "@/lib/validations/product";
 import {
+  approveProductForAdmin,
   createProductForSeller,
   getProductByIdForSeller,
   getProductBySellerAndSku,
   getProductBySlug,
   listActiveProducts,
+  listPendingProductsForAdmin,
   listProductsForSeller as listProductsForSellerData,
+  rejectProductForAdmin,
   setProductStatusForSeller,
   updateProductForSeller,
 } from "@/server/data/products";
@@ -26,6 +29,7 @@ export type UpdateProductResult =
   | { ok: false; fieldErrors?: Partial<Record<keyof UpdateProductInput, string>>; formError?: string };
 
 export type ToggleStatusResult = { ok: true } | { ok: false; formError: string };
+export type ModerateProductResult = { ok: true } | { ok: false; formError: string };
 
 async function uniqueProductSlug(name: string): Promise<string> {
   const base = slugify(name) || "product";
@@ -133,4 +137,24 @@ export async function getProductForStorefront(slug: string) {
   const product = await getProductBySlug(slug);
   if (!product || product.status !== "active") return null;
   return product;
+}
+
+export function getPendingProductsForAdmin() {
+  return listPendingProductsForAdmin();
+}
+
+export async function approveProduct(productId: string): Promise<ModerateProductResult> {
+  const updated = await approveProductForAdmin(productId);
+  if (!updated) {
+    return { ok: false, formError: "This product is no longer pending review." };
+  }
+  return { ok: true };
+}
+
+export async function rejectProduct(productId: string): Promise<ModerateProductResult> {
+  const updated = await rejectProductForAdmin(productId);
+  if (!updated) {
+    return { ok: false, formError: "This product is no longer pending review." };
+  }
+  return { ok: true };
 }

@@ -27,8 +27,19 @@ function ToggleButton({ active }: { active: boolean }) {
   );
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  pending_review: "Pending review",
+  active: "Active",
+  inactive: "Inactive",
+  rejected: "Rejected",
+};
+
 export function ProductRow({ product }: Props) {
   const isActive = product.status === "active";
+  // Only a decided product (active/inactive) has a toggle at all — pending_review/rejected are
+  // waiting on an admin decision, not something the seller can flip themselves.
+  const canToggle = product.status === "active" || product.status === "inactive";
   const variant = product.variants[0];
 
   return (
@@ -39,7 +50,7 @@ export function ProductRow({ product }: Props) {
           {product.category.name} · SKU {product.sku}
         </p>
         <p className={isActive ? "text-emerald-600" : "text-muted-foreground"}>
-          {isActive ? "Active" : "Inactive"}
+          {STATUS_LABEL[product.status] ?? product.status}
         </p>
       </div>
 
@@ -54,13 +65,15 @@ export function ProductRow({ product }: Props) {
         >
           Edit
         </Link>
-        <form
-          action={async () => {
-            await toggleProductStatusAction(product.id, !isActive);
-          }}
-        >
-          <ToggleButton active={isActive} />
-        </form>
+        {canToggle && (
+          <form
+            action={async () => {
+              await toggleProductStatusAction(product.id, !isActive);
+            }}
+          >
+            <ToggleButton active={isActive} />
+          </form>
+        )}
       </div>
     </Card>
   );

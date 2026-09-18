@@ -8,7 +8,12 @@ import {
   getSellerProfileById,
   getSellerProfileByStoreSlug,
   getSellerProfileByUserId,
+  listApprovedSellerProfiles,
+  listSuspendedSellerProfiles,
+  reinstateSellerProfile as reinstateSellerProfileData,
   rejectSellerApplication as rejectSellerApplicationData,
+  setSellerCommissionOverride,
+  suspendSellerProfileAndDeactivateProducts,
 } from "@/server/data/seller-profiles";
 import { slugify } from "@/lib/slug";
 import { sendEmail } from "@/lib/email";
@@ -20,6 +25,9 @@ export type ApplyResult =
 
 export type ApproveResult = { ok: true } | { ok: false; formError: string };
 export type RejectResult = { ok: true } | { ok: false; formError: string };
+export type SuspendResult = { ok: true } | { ok: false; formError: string };
+export type ReinstateResult = { ok: true } | { ok: false; formError: string };
+export type UpdateCommissionResult = { ok: true } | { ok: false; formError: string };
 
 async function uniqueStoreSlug(storeName: string): Promise<string> {
   const base = slugify(storeName) || "store";
@@ -121,6 +129,72 @@ export async function rejectSellerApplication(sellerProfileId: string): Promise<
     }).catch(() => {});
   }
 
+  return { ok: true };
+}
+
+export function getApprovedSellers() {
+  return listApprovedSellerProfiles();
+}
+
+export function getSuspendedSellers() {
+  return listSuspendedSellerProfiles();
+}
+
+export async function suspendSeller(sellerProfileId: string): Promise<SuspendResult> {
+  const profile = await getSellerProfileById(sellerProfileId);
+  if (!profile || profile.status !== "approved") {
+    return { ok: false, formError: "This seller isn't currently approved." };
+  }
+
+  await suspendSellerProfileAndDeactivateProducts(sellerProfileId);
+
+  const user = await getUserById(profile.userId);
+  if (user) {
+    await sendEmail({
+      to: user.email,
+      subject: "Your seller account has been suspended",
+      html: `<p>Your seller account "${profile.storeName}" has been suspended and your listings have been deactivated. Contact support for next steps.</p>`,
+      text: `Your seller account "${profile.storeName}" has been suspended and your listings have been deactivated. Contact support for next steps.`,
+    }).catch(() => {});
+  }
+
+  return { ok: true };
+}
+
+export async function reinstateSeller(sellerProfileId: string): Promise<ReinstateResult> {
+  const updated = await reinstateSellerProfileData(sellerProfileId);
+  if (!updated) {
+    return { ok: false, formError: "This seller isn't currently suspended." };
+  }
+
+  const user = await getUserById(updated.userId);
+  if (user) {
+    await sendEmail({
+      to: user.email,
+      subject: "Your seller account has been reinstated",
+      html: `<p>Your seller account "${updated.storeName}" has been reinstated. Your previous listings are still inactive — reactivate each one from your dashboard when you're ready.</p>`,
+      text: `Your seller account "${updated.storeName}" has been reinstated. Your previous listings are still inactive — reactivate each one from your dashboard when you're ready.`,
+    }).catch(() => {});
+  }
+
+  return { ok: true };
+}
+
+/** rateInput is the raw string from the inline admin form; empty clears the override. */
+export async function updateSellerCommission(
+  sellerProfileId: string,
+  rateInput: string
+): Promise<UpdateCommissionResult> {
+  const trimmed = rateInput.trim();
+  let rate: number | null = null;
+  if (trimmed) {
+    rate = Number(trimmed);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+      return { ok: false, formError: "Rate must be a number between 0 and 1." };
+    }
+  }
+
+  await setSellerCommissionOverride(sellerProfileId, rate);
   return { ok: true };
 }
 

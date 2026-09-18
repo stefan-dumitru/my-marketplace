@@ -31,8 +31,7 @@ export function createProductForSeller(
       description: input.description || null,
       brand: input.brand || null,
       images: input.images,
-      status: "active",
-      activatedAt: new Date(),
+      status: "pending_review",
       variants: {
         create: [{ sku: input.sku, price: input.price, stockQty: input.stockQty }],
       },
@@ -138,6 +137,44 @@ export function listProductsForSeller(sellerId: string, opts?: { take?: number }
     take: opts?.take ?? 50,
     include: { variants: true, category: { select: { name: true } } },
   });
+}
+
+export function listPendingProductsForAdmin(opts?: { take?: number }) {
+  return prisma.product.findMany({
+    where: { status: "pending_review" },
+    orderBy: { createdAt: "asc" },
+    take: opts?.take ?? 50,
+    include: {
+      seller: { select: { storeName: true } },
+      category: { select: { name: true } },
+      variants: true,
+    },
+  });
+}
+
+/**
+ * Verify-then-update: only a currently-pending_review product can be decided, so a double-click
+ * (or two admins acting on the same queue) can't flip an already-decided product a second time.
+ */
+async function setPendingProductStatus(productId: string, status: "active" | "rejected") {
+  const owned = await prisma.product.findFirst({
+    where: { id: productId, status: "pending_review" },
+    select: { id: true },
+  });
+  if (!owned) return null;
+
+  return prisma.product.update({
+    where: { id: productId },
+    data: status === "active" ? { status: "active", activatedAt: new Date() } : { status: "rejected" },
+  });
+}
+
+export function approveProductForAdmin(productId: string) {
+  return setPendingProductStatus(productId, "active");
+}
+
+export function rejectProductForAdmin(productId: string) {
+  return setPendingProductStatus(productId, "rejected");
 }
 
 export function listActiveProducts(opts?: { take?: number; q?: string; categorySlug?: string }) {

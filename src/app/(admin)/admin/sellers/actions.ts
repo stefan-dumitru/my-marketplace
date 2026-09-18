@@ -3,7 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { approveSellerApplication, rejectSellerApplication } from "@/server/services/seller-service";
+import {
+  approveSellerApplication,
+  reinstateSeller,
+  rejectSellerApplication,
+  suspendSeller,
+  updateSellerCommission,
+} from "@/server/services/seller-service";
 
 async function requireAdmin() {
   const session = await auth();
@@ -23,6 +29,27 @@ export async function approveSellerAction(sellerProfileId: string) {
 export async function rejectSellerAction(sellerProfileId: string) {
   await requireAdmin();
   const result = await rejectSellerApplication(sellerProfileId);
+  revalidatePath("/admin/sellers");
+  return result;
+}
+
+export async function suspendSellerAction(sellerProfileId: string) {
+  await requireAdmin();
+  const result = await suspendSeller(sellerProfileId);
+  revalidatePath("/admin/sellers");
+  return result;
+}
+
+export async function reinstateSellerAction(sellerProfileId: string) {
+  await requireAdmin();
+  const result = await reinstateSeller(sellerProfileId);
+  revalidatePath("/admin/sellers");
+  return result;
+}
+
+export async function updateCommissionAction(sellerProfileId: string, rateInput: string) {
+  await requireAdmin();
+  const result = await updateSellerCommission(sellerProfileId, rateInput);
   revalidatePath("/admin/sellers");
   return result;
 }

@@ -17,6 +17,12 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         <Link href="/admin/reviews" className={buttonVariants({ variant: "outline", size: "sm" })}>
           Reviews
         </Link>
+        <Link href="/admin/products" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Products
+        </Link>
+        <Link href="/admin/categories" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Categories
+        </Link>
       </nav>
       {children}
     </div>
