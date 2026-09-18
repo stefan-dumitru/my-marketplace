@@ -1,6 +1,7 @@
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { createAuditLog } from "@/server/data/audit-log";
 import type Stripe from "stripe";
 
 // Next's App Router Route Handlers never auto-parse the body — req.text() gives the exact
@@ -35,8 +36,9 @@ export async function POST(req: Request) {
       // Every write below is a conditional updateMany guarded by current status, so redelivery
       // of this event is a harmless no-op — naturally idempotent with no processed-events table
       // needed, specifically because stock was already decremented at order-creation time, not
-      // here.
-      await prisma.payment.updateMany({
+      // here. The audit log entry is gated on the payment update's own count so a redelivery
+      // (which matches zero rows the second time) can't double-log either.
+      const paymentUpdate = await prisma.payment.updateMany({
         where: { orderId, status: { not: "succeeded" } },
         data: { status: "succeeded", paidAt: new Date(), stripePaymentIntentId: paymentIntentId },
       });
@@ -48,6 +50,15 @@ export async function POST(req: Request) {
         where: { id: orderId, status: "pending_payment" },
         data: { status: "paid" },
       });
+      if (paymentUpdate.count > 0) {
+        await createAuditLog({
+          actorUserId: null,
+          action: "payment_succeeded",
+          entityType: "Payment",
+          entityId: orderId,
+          afterValue: { stripePaymentIntentId: paymentIntentId ?? null },
+        });
+      }
       break;
     }
 
@@ -59,7 +70,7 @@ export async function POST(req: Request) {
       const orderId = session.metadata?.orderId;
       if (!orderId) break;
 
-      await prisma.payment.updateMany({
+      const paymentFailUpdate = await prisma.payment.updateMany({
         where: { orderId, status: "pending" },
         data: { status: "failed" },
       });
@@ -67,6 +78,14 @@ export async function POST(req: Request) {
         where: { id: orderId, status: "pending_payment" },
         data: { status: "payment_failed" },
       });
+      if (paymentFailUpdate.count > 0) {
+        await createAuditLog({
+          actorUserId: null,
+          action: "payment_failed",
+          entityType: "Payment",
+          entityId: orderId,
+        });
+      }
       break;
     }
 

@@ -18,6 +18,7 @@ import {
   setProductStatusForSeller,
   updateProductForSeller,
 } from "@/server/data/products";
+import { createAuditLog } from "@/server/data/audit-log";
 import { slugify } from "@/lib/slug";
 
 export type CreateProductResult =
@@ -143,18 +144,42 @@ export function getPendingProductsForAdmin() {
   return listPendingProductsForAdmin();
 }
 
-export async function approveProduct(productId: string): Promise<ModerateProductResult> {
+export async function approveProduct(
+  productId: string,
+  actorUserId: string
+): Promise<ModerateProductResult> {
   const updated = await approveProductForAdmin(productId);
   if (!updated) {
     return { ok: false, formError: "This product is no longer pending review." };
   }
+  // Prior status is guaranteed "pending_review" by approveProductForAdmin's own verify-then-update
+  // guard — no extra query needed to know the "before" value.
+  await createAuditLog({
+    actorUserId,
+    action: "product_approved",
+    entityType: "Product",
+    entityId: productId,
+    beforeValue: { status: "pending_review" },
+    afterValue: { status: "active" },
+  });
   return { ok: true };
 }
 
-export async function rejectProduct(productId: string): Promise<ModerateProductResult> {
+export async function rejectProduct(
+  productId: string,
+  actorUserId: string
+): Promise<ModerateProductResult> {
   const updated = await rejectProductForAdmin(productId);
   if (!updated) {
     return { ok: false, formError: "This product is no longer pending review." };
   }
+  await createAuditLog({
+    actorUserId,
+    action: "product_rejected",
+    entityType: "Product",
+    entityId: productId,
+    beforeValue: { status: "pending_review" },
+    afterValue: { status: "rejected" },
+  });
   return { ok: true };
 }

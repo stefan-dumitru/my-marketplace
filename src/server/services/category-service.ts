@@ -8,6 +8,7 @@ import {
   updateCategory,
 } from "@/server/data/categories";
 import { slugify } from "@/lib/slug";
+import { createAuditLog } from "@/server/data/audit-log";
 
 export type CreateCategoryResult =
   | { ok: true }
@@ -60,7 +61,8 @@ export async function createCategoryForAdmin(input: CategoryInput): Promise<Crea
 
 export async function updateCategoryForAdmin(
   id: string,
-  input: CategoryInput
+  input: CategoryInput,
+  actorUserId: string
 ): Promise<UpdateCategoryResult> {
   const parsed = categorySchema.safeParse(input);
   if (!parsed.success) {
@@ -74,6 +76,8 @@ export async function updateCategoryForAdmin(
     return { ok: false, fieldErrors: { parentId: "A category can't be its own parent." } };
   }
 
+  const before = await getCategoryById(id);
+
   const updated = await updateCategory(id, {
     name,
     parentId: parentId || null,
@@ -85,5 +89,21 @@ export async function updateCategoryForAdmin(
   if (!updated) {
     return { ok: false, formError: "Category not found." };
   }
+
+  // Scoped to commission-rate changes only, not every field edit — security.md's audit
+  // requirement is specifically about "commission-rate changes," not general category CRUD.
+  const oldRate = before?.defaultCommissionRate.toString();
+  const newRate = updated.defaultCommissionRate.toString();
+  if (oldRate !== newRate) {
+    await createAuditLog({
+      actorUserId,
+      action: "category_commission_updated",
+      entityType: "Category",
+      entityId: id,
+      beforeValue: { defaultCommissionRate: oldRate },
+      afterValue: { defaultCommissionRate: newRate },
+    });
+  }
+
   return { ok: true };
 }

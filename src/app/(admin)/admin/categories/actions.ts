@@ -10,6 +10,7 @@ async function requireAdmin() {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/admin/categories");
   if (session.user.role !== "admin") redirect("/");
+  return session.user.id;
 }
 
 export async function createCategoryAction(input: CategoryInput) {
@@ -20,8 +21,8 @@ export async function createCategoryAction(input: CategoryInput) {
 }
 
 export async function updateCategoryAction(id: string, input: CategoryInput) {
-  await requireAdmin();
-  const result = await updateCategoryForAdmin(id, input);
+  const actorUserId = await requireAdmin();
+  const result = await updateCategoryForAdmin(id, input, actorUserId);
   revalidatePath("/admin/categories");
   return result;
 }

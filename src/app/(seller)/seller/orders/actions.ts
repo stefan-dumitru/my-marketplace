@@ -22,7 +22,7 @@ export async function markShippedAction(
   if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
 
-  const result = await markShipped(context.profile.id, sellerOrderId, input);
+  const result = await markShipped(context.profile.id, sellerOrderId, input, context.session.user.id);
   revalidatePath("/seller/orders");
   revalidatePath(`/seller/orders/${sellerOrderId}`);
   return result;
@@ -33,7 +33,7 @@ export async function markDeliveredAction(sellerOrderId: string): Promise<ShipOr
   if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
 
-  const result = await markDelivered(context.profile.id, sellerOrderId);
+  const result = await markDelivered(context.profile.id, sellerOrderId, context.session.user.id);
   revalidatePath("/seller/orders");
   revalidatePath(`/seller/orders/${sellerOrderId}`);
   return result;
@@ -44,7 +44,7 @@ export async function cancelSellerOrderAction(sellerOrderId: string): Promise<Ca
   if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
 
-  const result = await cancelSellerOrder(context.profile.id, sellerOrderId);
+  const result = await cancelSellerOrder(context.profile.id, sellerOrderId, context.session.user.id);
   revalidatePath("/seller/orders");
   revalidatePath(`/seller/orders/${sellerOrderId}`);
   return result;

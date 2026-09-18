@@ -5,6 +5,7 @@ import {
   listPayoutReadySellerOrdersForAdmin,
   markSellerOrderPaidOut,
 } from "@/server/data/seller-orders";
+import { createAuditLog } from "@/server/data/audit-log";
 
 export type ReleasePayoutResult = { ok: true } | { ok: false; formError: string };
 
@@ -18,7 +19,10 @@ export function getPayoutReadyOrders() {
  * second Transfer, and markSellerOrderPaidOut's verify-then-update means a retried DB write
  * can't either.
  */
-export async function releasePayout(sellerOrderId: string): Promise<ReleasePayoutResult> {
+export async function releasePayout(
+  sellerOrderId: string,
+  actorUserId: string
+): Promise<ReleasePayoutResult> {
   const order = await getPayoutReadySellerOrderById(sellerOrderId);
   if (!order) {
     return { ok: false, formError: "This order isn't ready for payout right now." };
@@ -39,6 +43,13 @@ export async function releasePayout(sellerOrderId: string): Promise<ReleasePayou
       { idempotencyKey: `payout_${sellerOrderId}` }
     );
     await markSellerOrderPaidOut(sellerOrderId, transfer.id);
+    await createAuditLog({
+      actorUserId,
+      action: "payout_released",
+      entityType: "SellerOrder",
+      entityId: sellerOrderId,
+      afterValue: { payoutAmount: order.payoutAmount.toString(), stripeTransferId: transfer.id },
+    });
     return { ok: true };
   } catch {
     return { ok: false, formError: "Couldn't release the payout. Try again shortly." };

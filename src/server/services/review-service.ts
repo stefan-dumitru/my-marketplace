@@ -9,6 +9,7 @@ import {
   listPendingReviews,
   setReviewStatus,
 } from "@/server/data/reviews";
+import { createAuditLog } from "@/server/data/audit-log";
 
 export type SubmitReviewResult =
   | { ok: true }
@@ -67,11 +68,21 @@ export function listPendingReviewsForAdmin() {
 
 export async function moderateReview(
   reviewId: string,
-  decision: "approved" | "rejected"
+  decision: "approved" | "rejected",
+  actorUserId: string
 ): Promise<ModerateReviewResult> {
   const applied = await setReviewStatus(reviewId, decision);
   if (!applied) {
     return { ok: false, formError: "This review was already decided." };
   }
+  // Prior status is guaranteed "pending" by setReviewStatus's own verify-then-update guard.
+  await createAuditLog({
+    actorUserId,
+    action: decision === "approved" ? "review_approved" : "review_rejected",
+    entityType: "Review",
+    entityId: reviewId,
+    beforeValue: { status: "pending" },
+    afterValue: { status: decision },
+  });
   return { ok: true };
 }

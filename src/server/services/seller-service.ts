@@ -18,6 +18,7 @@ import {
 import { slugify } from "@/lib/slug";
 import { sendEmail } from "@/lib/email";
 import { getUserById } from "@/server/data/users";
+import { createAuditLog } from "@/server/data/audit-log";
 
 export type ApplyResult =
   | { ok: true }
@@ -90,13 +91,24 @@ export async function applyForSellerAccount(
   return { ok: true };
 }
 
-export async function approveSellerApplication(sellerProfileId: string): Promise<ApproveResult> {
+export async function approveSellerApplication(
+  sellerProfileId: string,
+  actorUserId: string
+): Promise<ApproveResult> {
   const profile = await getSellerProfileById(sellerProfileId);
   if (!profile || profile.status !== "pending") {
     return { ok: false, formError: "This application is no longer pending." };
   }
 
   await approveSellerProfileAndPromoteUser(sellerProfileId, profile.userId);
+  await createAuditLog({
+    actorUserId,
+    action: "seller_approved",
+    entityType: "SellerProfile",
+    entityId: sellerProfileId,
+    beforeValue: { status: profile.status },
+    afterValue: { status: "approved" },
+  });
 
   const user = await getUserById(profile.userId);
   if (user) {
@@ -111,13 +123,24 @@ export async function approveSellerApplication(sellerProfileId: string): Promise
   return { ok: true };
 }
 
-export async function rejectSellerApplication(sellerProfileId: string): Promise<RejectResult> {
+export async function rejectSellerApplication(
+  sellerProfileId: string,
+  actorUserId: string
+): Promise<RejectResult> {
   const profile = await getSellerProfileById(sellerProfileId);
   if (!profile || profile.status !== "pending") {
     return { ok: false, formError: "This application is no longer pending." };
   }
 
   await rejectSellerApplicationData(sellerProfileId);
+  await createAuditLog({
+    actorUserId,
+    action: "seller_rejected",
+    entityType: "SellerProfile",
+    entityId: sellerProfileId,
+    beforeValue: { status: profile.status },
+    afterValue: { status: "rejected" },
+  });
 
   const user = await getUserById(profile.userId);
   if (user) {
@@ -140,13 +163,24 @@ export function getSuspendedSellers() {
   return listSuspendedSellerProfiles();
 }
 
-export async function suspendSeller(sellerProfileId: string): Promise<SuspendResult> {
+export async function suspendSeller(
+  sellerProfileId: string,
+  actorUserId: string
+): Promise<SuspendResult> {
   const profile = await getSellerProfileById(sellerProfileId);
   if (!profile || profile.status !== "approved") {
     return { ok: false, formError: "This seller isn't currently approved." };
   }
 
   await suspendSellerProfileAndDeactivateProducts(sellerProfileId);
+  await createAuditLog({
+    actorUserId,
+    action: "seller_suspended",
+    entityType: "SellerProfile",
+    entityId: sellerProfileId,
+    beforeValue: { status: profile.status },
+    afterValue: { status: "suspended" },
+  });
 
   const user = await getUserById(profile.userId);
   if (user) {
@@ -161,11 +195,22 @@ export async function suspendSeller(sellerProfileId: string): Promise<SuspendRes
   return { ok: true };
 }
 
-export async function reinstateSeller(sellerProfileId: string): Promise<ReinstateResult> {
+export async function reinstateSeller(
+  sellerProfileId: string,
+  actorUserId: string
+): Promise<ReinstateResult> {
   const updated = await reinstateSellerProfileData(sellerProfileId);
   if (!updated) {
     return { ok: false, formError: "This seller isn't currently suspended." };
   }
+  await createAuditLog({
+    actorUserId,
+    action: "seller_reinstated",
+    entityType: "SellerProfile",
+    entityId: sellerProfileId,
+    beforeValue: { status: "suspended" },
+    afterValue: { status: "approved" },
+  });
 
   const user = await getUserById(updated.userId);
   if (user) {
@@ -183,7 +228,8 @@ export async function reinstateSeller(sellerProfileId: string): Promise<Reinstat
 /** rateInput is the raw string from the inline admin form; empty clears the override. */
 export async function updateSellerCommission(
   sellerProfileId: string,
-  rateInput: string
+  rateInput: string,
+  actorUserId: string
 ): Promise<UpdateCommissionResult> {
   const trimmed = rateInput.trim();
   let rate: number | null = null;
@@ -194,7 +240,16 @@ export async function updateSellerCommission(
     }
   }
 
+  const profile = await getSellerProfileById(sellerProfileId);
   await setSellerCommissionOverride(sellerProfileId, rate);
+  await createAuditLog({
+    actorUserId,
+    action: "seller_commission_updated",
+    entityType: "SellerProfile",
+    entityId: sellerProfileId,
+    beforeValue: { commissionRateOverride: profile?.commissionRateOverride?.toString() ?? null },
+    afterValue: { commissionRateOverride: rate },
+  });
   return { ok: true };
 }
 

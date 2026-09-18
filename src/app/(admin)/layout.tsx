@@ -26,6 +26,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         <Link href="/admin/payouts" className={buttonVariants({ variant: "outline", size: "sm" })}>
           Payouts
         </Link>
+        <Link href="/admin/audit-log" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Audit Log
+        </Link>
       </nav>
       {children}
     </div>

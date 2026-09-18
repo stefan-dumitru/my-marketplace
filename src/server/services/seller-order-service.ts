@@ -10,6 +10,7 @@ import {
   markSellerOrderRefunded,
   markSellerOrderShippedForSeller,
 } from "@/server/data/seller-orders";
+import { createAuditLog } from "@/server/data/audit-log";
 
 export type ShipOrderResult =
   | { ok: true }
@@ -28,7 +29,8 @@ export function getSellerOrderForSeller(sellerId: string, sellerOrderId: string)
 export async function markShipped(
   sellerId: string,
   sellerOrderId: string,
-  input: ShipOrderInput
+  input: ShipOrderInput,
+  actorUserId: string
 ): Promise<ShipOrderResult> {
   const parsed = shipOrderSchema.safeParse(input);
   if (!parsed.success) {
@@ -43,14 +45,38 @@ export async function markShipped(
   if (!updated) {
     return { ok: false, formError: "This order can't be marked shipped right now." };
   }
+  // Prior status is guaranteed "confirmed" by markSellerOrderShippedForSeller's own
+  // verify-then-update guard.
+  await createAuditLog({
+    actorUserId,
+    action: "seller_order_shipped",
+    entityType: "SellerOrder",
+    entityId: sellerOrderId,
+    beforeValue: { status: "confirmed" },
+    afterValue: { status: "shipped", trackingNumber: parsed.data.trackingNumber },
+  });
   return { ok: true };
 }
 
-export async function markDelivered(sellerId: string, sellerOrderId: string): Promise<ShipOrderResult> {
+export async function markDelivered(
+  sellerId: string,
+  sellerOrderId: string,
+  actorUserId: string
+): Promise<ShipOrderResult> {
   const updated = await markSellerOrderDeliveredForSeller(sellerId, sellerOrderId);
   if (!updated) {
     return { ok: false, formError: "This order can't be marked delivered right now." };
   }
+  // Prior status is guaranteed "shipped" by markSellerOrderDeliveredForSeller's own
+  // verify-then-update guard.
+  await createAuditLog({
+    actorUserId,
+    action: "seller_order_delivered",
+    entityType: "SellerOrder",
+    entityId: sellerOrderId,
+    beforeValue: { status: "shipped" },
+    afterValue: { status: "delivered" },
+  });
 
   const buyerEmail = updated.order.buyer.email;
   const orderNumber = updated.order.orderNumber;
@@ -75,7 +101,8 @@ export async function markDelivered(sellerId: string, sellerOrderId: string): Pr
  */
 export async function cancelSellerOrder(
   sellerId: string,
-  sellerOrderId: string
+  sellerOrderId: string,
+  actorUserId: string
 ): Promise<CancelOrderResult> {
   const current = await getSellerOrderByIdForSeller(sellerId, sellerOrderId);
   if (!current) {
@@ -93,6 +120,16 @@ export async function cancelSellerOrder(
       return { ok: false, formError: "This order can't be cancelled right now." };
     }
     sellerOrder = cancelled;
+    // Logged only on this branch — the one that actually just performed the DB-side
+    // cancellation — never on a retry that's only redoing the refund half.
+    await createAuditLog({
+      actorUserId,
+      action: "seller_order_cancelled",
+      entityType: "SellerOrder",
+      entityId: sellerOrderId,
+      beforeValue: { status: current.status },
+      afterValue: { status: "cancelled" },
+    });
   }
 
   const paymentIntentId = sellerOrder.order.payment?.stripePaymentIntentId;
@@ -121,5 +158,14 @@ export async function cancelSellerOrder(
   }
 
   await markSellerOrderRefunded(sellerOrderId);
+  // Logged separately from seller_order_cancelled since the refund can complete on a later
+  // retry, independent of when the DB-side cancellation itself happened.
+  await createAuditLog({
+    actorUserId,
+    action: "seller_order_refunded",
+    entityType: "SellerOrder",
+    entityId: sellerOrderId,
+    afterValue: { amount: sellerOrder.subtotal.toString() },
+  });
   return { ok: true };
 }

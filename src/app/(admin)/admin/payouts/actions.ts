@@ -9,11 +9,12 @@ async function requireAdmin() {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/admin/payouts");
   if (session.user.role !== "admin") redirect("/");
+  return session.user.id;
 }
 
 export async function releasePayoutAction(sellerOrderId: string) {
-  await requireAdmin();
-  const result = await releasePayout(sellerOrderId);
+  const actorUserId = await requireAdmin();
+  const result = await releasePayout(sellerOrderId, actorUserId);
   revalidatePath("/admin/payouts");
   return result;
 }

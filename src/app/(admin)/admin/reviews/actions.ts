@@ -9,20 +9,21 @@ async function requireAdmin() {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/admin/reviews");
   if (session.user.role !== "admin") redirect("/");
+  return session.user.id;
 }
 
 export async function approveReviewAction(reviewId: string) {
   // Independently re-verified — this Action is its own entry point, not protected by the
   // (admin) layout's redirect just because the page that rendered its button was.
-  await requireAdmin();
-  const result = await moderateReview(reviewId, "approved");
+  const actorUserId = await requireAdmin();
+  const result = await moderateReview(reviewId, "approved", actorUserId);
   revalidatePath("/admin/reviews");
   return result;
 }
 
 export async function rejectReviewAction(reviewId: string) {
-  await requireAdmin();
-  const result = await moderateReview(reviewId, "rejected");
+  const actorUserId = await requireAdmin();
+  const result = await moderateReview(reviewId, "rejected", actorUserId);
   revalidatePath("/admin/reviews");
   return result;
 }
