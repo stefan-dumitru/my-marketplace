@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 
 const GENERIC_ERROR = "Invalid email or password.";
 const SUSPENDED_ERROR = "Your account has been suspended. Contact support.";
+const TOO_MANY_ATTEMPTS_ERROR = "Too many attempts. Please try again in a few minutes.";
 
 export function LoginForm() {
   const router = useRouter();
@@ -34,7 +35,13 @@ export function LoginForm() {
       // `code` is Auth.js's documented safe channel for a specific reason (see the
       // AccountSuspendedError comment in src/lib/auth.ts); `error` itself is always the generic
       // "CredentialsSignin" type for any authorize() failure, by design.
-      setFormError(result.code === "account_suspended" ? SUSPENDED_ERROR : GENERIC_ERROR);
+      if (result.code === "account_suspended") {
+        setFormError(SUSPENDED_ERROR);
+      } else if (result.code === "too_many_attempts") {
+        setFormError(TOO_MANY_ATTEMPTS_ERROR);
+      } else {
+        setFormError(GENERIC_ERROR);
+      }
       return;
     }
 

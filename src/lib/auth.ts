@@ -3,6 +3,7 @@ import { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { getUserByEmail, getUserById } from "@/server/data/users";
+import { checkRateLimit } from "@/server/data/rate-limit";
 import { loginSchema } from "@/lib/validations/auth";
 
 // A custom `code` (not the free-form message) is Auth.js's documented way to safely surface a
@@ -11,6 +12,13 @@ import { loginSchema } from "@/lib/validations/auth";
 // so revealing "suspended" here doesn't create an account-enumeration risk.
 class AccountSuspendedError extends CredentialsSignin {
   code = "account_suspended";
+}
+
+// Keyed by email, not IP — preserves the dummy-hash timing trick below (an unknown email and a
+// wrong password must look identical to a client either way), and a per-account lockout is
+// exactly what "lock out or back off on repeated failed logins" (CLAUDE.md) asks for.
+class TooManyAttemptsError extends CredentialsSignin {
+  code = "too_many_attempts";
 }
 
 // A fixed dummy hash to compare against when no user is found, so a nonexistent email doesn't
@@ -54,6 +62,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
+
+        const rateLimit = await checkRateLimit(`login:${email}`, { limit: 5, windowSeconds: 900 });
+        if (!rateLimit.allowed) {
+          throw new TooManyAttemptsError();
+        }
 
         const user = await getUserByEmail(email);
 

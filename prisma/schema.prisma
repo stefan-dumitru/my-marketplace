@@ -361,3 +361,15 @@ model Address {
   @@index([userId])
   @@map("addresses")
 }
+
+// Fixed-window counter, not sliding-window/token-bucket — matches security.md's explicit
+// "basic... not adaptive/behavioral" scope for v1 rate limiting. No relation to any other
+// model: `key` is an opaque caller-defined string (e.g. `login:<email>`, `checkout:<userId>`).
+model RateLimitBucket {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  count      Int      @default(1)
+  windowEnds DateTime
+
+  @@map("rate_limit_buckets")
+}

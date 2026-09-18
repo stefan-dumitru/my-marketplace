@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { addressSchema, type AddressInput } from "@/lib/validations/checkout";
 import { checkoutCart, retryOrderPayment } from "@/server/services/order-service";
 import { createAddress } from "@/server/services/address-service";
+import { checkRateLimit } from "@/server/data/rate-limit";
 
 export async function createCheckoutSessionAction(input: AddressInput, saveAddress?: boolean) {
   // Independently re-verified — this Action is its own entry point, not protected by the
@@ -12,6 +13,12 @@ export async function createCheckoutSessionAction(input: AddressInput, saveAddre
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/checkout");
   if (!session.user.emailVerifiedAt) redirect("/cart?verify=1");
+
+  // Keyed by user id, not IP — checkout already requires being logged in.
+  const rateLimit = await checkRateLimit(`checkout:${session.user.id}`, { limit: 10, windowSeconds: 600 });
+  if (!rateLimit.allowed) {
+    return { ok: false as const, formError: "Too many attempts. Please try again shortly." };
+  }
 
   const parsed = addressSchema.safeParse(input);
   if (!parsed.success) {
