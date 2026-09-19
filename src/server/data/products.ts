@@ -185,24 +185,96 @@ export function rejectProductForAdmin(productId: string) {
   return setPendingProductStatus(productId, "rejected");
 }
 
-export function listActiveProducts(opts?: { take?: number; q?: string; categorySlug?: string }) {
-  return prisma.product.findMany({
-    where: {
-      status: "active",
-      // Plain contains/insensitive search — a deliberate v1 simplification, not the tsvector
-      // full-text search functional.md eventually calls for. The ?q=&category= URL shape won't
-      // need to change if that's added later; only this where-clause construction will.
-      ...(opts?.q ? { name: { contains: opts.q, mode: "insensitive" as const } } : {}),
-      ...(opts?.categorySlug ? { category: { slug: opts.categorySlug } } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: opts?.take ?? 24,
-    include: {
-      variants: true,
-      seller: { select: { storeName: true, storeSlug: true } },
-      category: { select: { name: true, slug: true } },
-    },
+const ACTIVE_PRODUCT_INCLUDE = {
+  variants: true,
+  seller: { select: { storeName: true, storeSlug: true } },
+  category: { select: { name: true, slug: true } },
+} as const;
+
+/**
+ * Ranked product ids for a free-text search, backed by Product.searchVector (a generated,
+ * GIN-indexed tsvector column — see the "add_product_search_vector" migration). Category name is
+ * matched via a live join rather than folded into the tsvector, since a generated column can't
+ * depend on a joined table and a category rename would otherwise need its own sync step.
+ *
+ * Only raw SQL in this codebase — confined here, tagged-template parameterized (never
+ * $queryRawUnsafe/string interpolation) per CLAUDE.md's no-raw-SQL-concatenation rule.
+ */
+async function searchActiveProductIds(opts: {
+  q: string;
+  categorySlug?: string;
+  take: number;
+}): Promise<string[]> {
+  const categorySlug = opts.categorySlug ?? null;
+
+  const ftsRows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT p.id
+    FROM products p
+    JOIN categories c ON c.id = p."categoryId"
+    WHERE p.status = 'active'::"ProductStatus"
+      AND (${categorySlug}::text IS NULL OR c.slug = ${categorySlug})
+      AND (
+        p."searchVector" @@ websearch_to_tsquery('simple', ${opts.q})
+        OR c.name ILIKE ${'%' + opts.q + '%'}
+      )
+    ORDER BY ts_rank(p."searchVector", websearch_to_tsquery('simple', ${opts.q})) DESC NULLS LAST,
+             p."createdAt" DESC
+    LIMIT ${opts.take}
+  `;
+  if (ftsRows.length > 0) return ftsRows.map((r) => r.id);
+
+  // Trigram fallback — only runs when the full-text query found nothing, e.g. a misspelled
+  // product name. Scoped to `name` only: the dominant typo case, not a blended multi-field match.
+  //
+  // word_similarity (the <% operator), not plain similarity/%: a short misspelled query word
+  // compared against a whole multi-word product name via plain similarity() scores low purely
+  // because the name has extra words diluting the ratio — word_similarity instead finds the
+  // best-matching substring of the name, which is what "does this typo match part of the name"
+  // actually means. SET LOCAL scopes the lowered threshold to this transaction only, so it can't
+  // leak onto a reused pooled connection the way a bare set_limit()-style call would.
+  const trgmRows = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SET LOCAL pg_trgm.word_similarity_threshold = 0.35`;
+    return tx.$queryRaw<{ id: string }[]>`
+      SELECT p.id
+      FROM products p
+      JOIN categories c ON c.id = p."categoryId"
+      WHERE p.status = 'active'::"ProductStatus"
+        AND (${categorySlug}::text IS NULL OR c.slug = ${categorySlug})
+        AND ${opts.q} <% p.name
+      ORDER BY word_similarity(${opts.q}, p.name) DESC
+      LIMIT ${opts.take}
+    `;
   });
+  return trgmRows.map((r) => r.id);
+}
+
+export async function listActiveProducts(opts?: { take?: number; q?: string; categorySlug?: string }) {
+  const take = opts?.take ?? 24;
+
+  if (!opts?.q) {
+    return prisma.product.findMany({
+      where: {
+        status: "active",
+        ...(opts?.categorySlug ? { category: { slug: opts.categorySlug } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+      include: ACTIVE_PRODUCT_INCLUDE,
+    });
+  }
+
+  const ids = await searchActiveProductIds({ q: opts.q, categorySlug: opts.categorySlug, take });
+  if (ids.length === 0) return [];
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: ids }, status: "active" },
+    include: ACTIVE_PRODUCT_INCLUDE,
+  });
+
+  // findMany's `id: { in }` doesn't preserve input order — re-sort into the rank order
+  // searchActiveProductIds already computed, or the SQL-side ranking would be silently discarded.
+  const byId = new Map(products.map((p) => [p.id, p]));
+  return ids.map((id) => byId.get(id)!).filter(Boolean);
 }
 
 // --- Variant CRUD ---
