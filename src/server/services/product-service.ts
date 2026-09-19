@@ -32,7 +32,7 @@ export type UpdateProductResult =
 export type ToggleStatusResult = { ok: true } | { ok: false; formError: string };
 export type ModerateProductResult = { ok: true } | { ok: false; formError: string };
 
-async function uniqueProductSlug(name: string): Promise<string> {
+export async function uniqueProductSlug(name: string): Promise<string> {
   const base = slugify(name) || "product";
   let candidate = base;
   let suffix = 2;

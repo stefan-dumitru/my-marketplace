@@ -96,11 +96,66 @@ model SellerProfile {
   approvedAt                 DateTime?
   suspendedAt                DateTime?
 
-  user         User          @relation(fields: [userId], references: [id])
-  products     Product[]
-  sellerOrders SellerOrder[]
+  user          User          @relation(fields: [userId], references: [id])
+  products      Product[]
+  sellerOrders  SellerOrder[]
+  importBatches ImportBatch[]
 
   @@map("seller_profiles")
+}
+
+enum ImportMode {
+  add_only
+  full_replace
+  attribute_update
+}
+
+enum ImportBatchStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum ImportRecordAction {
+  created
+  updated
+  skipped
+  failed
+  deactivated
+}
+
+model ImportBatch {
+  id            String            @id @default(cuid())
+  sellerId      String
+  mode          ImportMode
+  status        ImportBatchStatus @default(pending)
+  totalRows     Int
+  succeededRows Int               @default(0)
+  failedRows    Int               @default(0)
+  startedAt     DateTime          @default(now())
+  completedAt   DateTime?
+
+  seller  SellerProfile       @relation(fields: [sellerId], references: [id])
+  records ImportBatchRecord[]
+
+  @@index([sellerId])
+  @@map("import_batches")
+}
+
+model ImportBatchRecord {
+  id            String             @id @default(cuid())
+  importBatchId String
+  sku           String
+  action        ImportRecordAction
+  errorMessage  String?
+  beforeValue   Json?
+  afterValue    Json?
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@index([importBatchId])
+  @@map("import_batch_records")
 }
 
 model Category {

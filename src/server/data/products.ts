@@ -103,6 +103,30 @@ export async function updateProductForSeller(
   });
 }
 
+/**
+ * Verify-then-update, narrower than updateProductForSeller: touches only the default variant's
+ * price/stockQty, never the Product row's own fields (name/category/description/brand/images).
+ * Used by attribute_update-mode CSV import, which never re-supplies — and must never overwrite —
+ * anything beyond price/stock for an existing product.
+ */
+export async function updateProductAttributesForSeller(
+  sellerId: string,
+  productId: string,
+  data: { price: number; stockQty: number }
+) {
+  const owned = await prisma.product.findFirst({
+    where: { id: productId, sellerId },
+    select: { variants: { select: { id: true }, orderBy: { id: "asc" }, take: 1 } },
+  });
+  const defaultVariantId = owned?.variants[0]?.id;
+  if (!defaultVariantId) return null;
+
+  return prisma.productVariant.update({
+    where: { id: defaultVariantId },
+    data: { price: data.price, stockQty: data.stockQty },
+  });
+}
+
 export async function setProductStatusForSeller(
   sellerId: string,
   productId: string,
