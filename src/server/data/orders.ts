@@ -7,6 +7,7 @@ const ORDER_INCLUDE = {
     include: {
       seller: { select: { storeName: true, storeSlug: true } },
       items: { include: { review: true } },
+      returnRequest: { select: { status: true, reason: true } },
     },
   },
   payment: true,

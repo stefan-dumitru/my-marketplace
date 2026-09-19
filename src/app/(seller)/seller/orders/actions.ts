@@ -6,7 +6,9 @@ import {
   cancelSellerOrder,
   markDelivered,
   markShipped,
+  resolveReturn,
   type CancelOrderResult,
+  type ResolveReturnResult,
   type ShipOrderResult,
 } from "@/server/services/seller-order-service";
 import { getSellerContext } from "@/server/services/seller-service";
@@ -45,6 +47,20 @@ export async function cancelSellerOrderAction(sellerOrderId: string): Promise<Ca
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
 
   const result = await cancelSellerOrder(context.profile.id, sellerOrderId, context.session.user.id);
+  revalidatePath("/seller/orders");
+  revalidatePath(`/seller/orders/${sellerOrderId}`);
+  return result;
+}
+
+export async function resolveReturnRequestAction(
+  sellerOrderId: string,
+  decision: "approved" | "rejected"
+): Promise<ResolveReturnResult> {
+  const context = await getSellerContext();
+  if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
+  if (!context.profile || context.profile.status !== "approved") redirect("/sell");
+
+  const result = await resolveReturn(context.profile.id, sellerOrderId, context.session.user.id, decision);
   revalidatePath("/seller/orders");
   revalidatePath(`/seller/orders/${sellerOrderId}`);
   return result;

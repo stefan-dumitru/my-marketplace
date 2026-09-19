@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/format";
 import { ShipOrderForm } from "@/components/seller/ShipOrderForm";
 import { CancelOrderButton } from "@/components/seller/CancelOrderButton";
 import { DeliverOrderButton } from "@/components/seller/DeliverOrderButton";
+import { ReturnRequestActions } from "@/components/seller/ReturnRequestActions";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pending",
@@ -14,6 +15,11 @@ const STATUS_LABEL: Record<string, string> = {
   delivered: "Delivered",
   cancelled: "Cancelled",
   returned: "Returned",
+};
+
+const RETURN_STATUS_LABEL: Record<string, string> = {
+  approved: "Return approved and refunded",
+  rejected: "Return request rejected",
 };
 
 type Props = {
@@ -120,6 +126,25 @@ export default async function SellerOrderDetailPage({ params }: Props) {
           <p className="text-muted-foreground">
             {new Date(sellerOrder.deliveredAt).toLocaleString("ro-RO")}
           </p>
+        </Card>
+      )}
+
+      {sellerOrder.returnRequest?.status === "pending" && (
+        <Card className="flex flex-col gap-3 p-4 text-sm">
+          <div>
+            <p className="mb-1 font-medium">Return requested</p>
+            <p className="text-muted-foreground">{sellerOrder.returnRequest.reason}</p>
+          </div>
+          <ReturnRequestActions sellerOrderId={sellerOrder.id} />
+        </Card>
+      )}
+
+      {sellerOrder.returnRequest && sellerOrder.returnRequest.status !== "pending" && (
+        <Card className="p-4 text-sm">
+          <p className="font-medium">
+            {RETURN_STATUS_LABEL[sellerOrder.returnRequest.status] ?? sellerOrder.returnRequest.status}
+          </p>
+          <p className="text-muted-foreground">{sellerOrder.returnRequest.reason}</p>
         </Card>
       )}
     </div>

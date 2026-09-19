@@ -9,6 +9,7 @@ import {
   markSellerOrderDeliveredForSeller,
   markSellerOrderRefunded,
   markSellerOrderShippedForSeller,
+  resolveReturnRequestTransaction,
 } from "@/server/data/seller-orders";
 import { createAuditLog } from "@/server/data/audit-log";
 
@@ -17,6 +18,7 @@ export type ShipOrderResult =
   | { ok: false; fieldErrors?: Partial<Record<keyof ShipOrderInput, string>>; formError?: string };
 
 export type CancelOrderResult = { ok: true } | { ok: false; formError: string };
+export type ResolveReturnResult = { ok: true } | { ok: false; formError: string };
 
 export function getSellerOrders(sellerId: string) {
   return listSellerOrdersForSeller(sellerId);
@@ -167,5 +169,103 @@ export async function cancelSellerOrder(
     entityId: sellerOrderId,
     afterValue: { amount: sellerOrder.subtotal.toString() },
   });
+  return { ok: true };
+}
+
+/**
+ * Approve/reject orchestration for a buyer's return request, mirroring cancelSellerOrder's
+ * re-clickable, two-phase structure: the DB half (return request status, sub-order status, stock
+ * release) commits first and is idempotent; the Stripe refund half only runs on approval and can
+ * be safely retried independently if it fails.
+ */
+export async function resolveReturn(
+  sellerId: string,
+  sellerOrderId: string,
+  actorUserId: string,
+  decision: "approved" | "rejected"
+): Promise<ResolveReturnResult> {
+  const current = await getSellerOrderByIdForSeller(sellerId, sellerOrderId);
+  if (!current || !current.returnRequest) {
+    return { ok: false, formError: "This return request can't be resolved right now." };
+  }
+
+  if (current.returnRequest.status !== "pending") {
+    // Idempotent no-op, except an approval retry whose Stripe half hasn't completed yet — that
+    // one falls through to the refund attempt below instead of short-circuiting here.
+    const isRetryableApproval =
+      decision === "approved" && current.returnRequest.status === "approved" && !current.refundedAt;
+    if (!isRetryableApproval) return { ok: true };
+  } else {
+    const resolved = await resolveReturnRequestTransaction(sellerId, sellerOrderId, decision);
+    if (!resolved || !resolved.returnRequest) {
+      return { ok: false, formError: "This return request can't be resolved right now." };
+    }
+    // Logged only on this branch — the one that actually just performed the DB-side resolution —
+    // never on a retry that's only redoing the refund half.
+    await createAuditLog({
+      actorUserId,
+      action: decision === "approved" ? "return_request_approved" : "return_request_rejected",
+      entityType: "ReturnRequest",
+      entityId: current.returnRequest.id,
+      beforeValue: { status: "pending" },
+      afterValue: { status: decision },
+    });
+
+    if (decision === "rejected") {
+      await sendEmail({
+        to: current.order.buyer.email,
+        subject: "Your return request was not approved",
+        html: `<p>Your return request for order ${current.order.orderNumber} was not approved by the seller.</p>`,
+        text: `Your return request for order ${current.order.orderNumber} was not approved by the seller.`,
+      }).catch(() => {
+        // Best-effort notification — see markDelivered for the same pattern.
+      });
+      return { ok: true };
+    }
+  }
+
+  const paymentIntentId = current.order.payment?.stripePaymentIntentId;
+  if (!paymentIntentId) {
+    return {
+      ok: false,
+      formError:
+        "Return approved and stock restored, but the refund couldn't be processed. Try approving again to retry the refund.",
+    };
+  }
+
+  try {
+    await stripe.refunds.create(
+      {
+        payment_intent: paymentIntentId,
+        amount: Math.round(Number(current.subtotal) * 100),
+      },
+      { idempotencyKey: `return_${sellerOrderId}` }
+    );
+  } catch {
+    return {
+      ok: false,
+      formError:
+        "Return approved and stock restored, but the refund couldn't be processed. Try approving again to retry the refund.",
+    };
+  }
+
+  await markSellerOrderRefunded(sellerOrderId);
+  await createAuditLog({
+    actorUserId,
+    action: "seller_order_refunded",
+    entityType: "SellerOrder",
+    entityId: sellerOrderId,
+    afterValue: { amount: current.subtotal.toString(), reason: "return" },
+  });
+
+  await sendEmail({
+    to: current.order.buyer.email,
+    subject: "Your return has been approved and refunded",
+    html: `<p>Your return for order ${current.order.orderNumber} has been approved and refunded.</p>`,
+    text: `Your return for order ${current.order.orderNumber} has been approved and refunded.`,
+  }).catch(() => {
+    // Best-effort notification — see markDelivered for the same pattern.
+  });
+
   return { ok: true };
 }

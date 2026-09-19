@@ -4,6 +4,7 @@ import { getOrderByIdForBuyer } from "@/server/data/orders";
 import { Card } from "@/components/ui/card";
 import { formatPrice } from "@/lib/format";
 import { ReviewForm } from "@/components/review/ReviewForm";
+import { ReturnRequestForm } from "@/components/order/ReturnRequestForm";
 
 const STATUS_LABEL: Record<string, string> = {
   pending_payment: "Awaiting payment",
@@ -18,6 +19,12 @@ const SELLER_ORDER_STATUS_LABEL: Record<string, string> = {
   delivered: "Delivered",
   cancelled: "Cancelled",
   returned: "Returned",
+};
+
+const RETURN_STATUS_LABEL: Record<string, string> = {
+  pending: "Return requested — pending seller review",
+  approved: "Return approved — refunded",
+  rejected: "Return request rejected",
 };
 
 const REVIEW_STATUS_LABEL: Record<string, string> = {
@@ -94,6 +101,15 @@ export default async function OrderDetailPage({ params }: Props) {
               </div>
             ))}
           </div>
+          {sellerOrder.returnRequest ? (
+            <p className="text-xs text-muted-foreground">
+              {RETURN_STATUS_LABEL[sellerOrder.returnRequest.status] ?? sellerOrder.returnRequest.status}
+            </p>
+          ) : (
+            sellerOrder.status === "delivered" && (
+              <ReturnRequestForm orderId={order.id} sellerOrderId={sellerOrder.id} />
+            )
+          )}
           <p className="text-right text-muted-foreground">
             Subtotal: <span className="font-medium text-foreground">{formatPrice(sellerOrder.subtotal)}</span>
           </p>

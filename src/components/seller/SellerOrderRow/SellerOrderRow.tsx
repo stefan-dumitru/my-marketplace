@@ -18,6 +18,7 @@ type Props = {
     status: string;
     subtotal: unknown;
     refundedAt: Date | null;
+    returnRequest: { status: string } | null;
     order: { orderNumber: string; createdAt: Date };
   };
 };
@@ -26,6 +27,7 @@ export function SellerOrderRow({ sellerOrder }: Props) {
   const statusLabel = STATUS_LABEL[sellerOrder.status] ?? sellerOrder.status;
   const refundNote =
     sellerOrder.status === "cancelled" ? (sellerOrder.refundedAt ? " — Refunded" : " — Refund pending") : "";
+  const returnNote = sellerOrder.returnRequest?.status === "pending" ? " — Return requested" : "";
 
   return (
     <Card className="flex flex-col gap-3 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -37,6 +39,7 @@ export function SellerOrderRow({ sellerOrder }: Props) {
         <p className="text-muted-foreground">
           {statusLabel}
           {refundNote}
+          {returnNote}
         </p>
       </div>
 

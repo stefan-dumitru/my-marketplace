@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 const SELLER_ORDER_INCLUDE = {
   items: true,
+  returnRequest: true,
   order: {
     select: {
       orderNumber: true,
@@ -21,6 +22,7 @@ export function listSellerOrdersForSeller(sellerId: string, opts?: { take?: numb
     take: opts?.take ?? 50,
     include: {
       items: true,
+      returnRequest: { select: { status: true } },
       order: { select: { orderNumber: true, createdAt: true } },
     },
   });
@@ -98,6 +100,52 @@ export async function cancelSellerOrderTransaction(sellerId: string, sellerOrder
         where: { id: item.productVariantId },
         data: { stockQty: { increment: item.quantity } },
       });
+    }
+
+    return tx.sellerOrder.findFirst({
+      where: { id: sellerOrderId },
+      include: SELLER_ORDER_INCLUDE,
+    });
+  });
+}
+
+/**
+ * Verify-then-act inside one transaction, mirroring cancelSellerOrderTransaction: ownership,
+ * current status ("delivered"), and a still-pending return request are all checked in the same
+ * where-clause before writing. On approval, also flips the sub-order to "returned" and releases
+ * stock for every item, exactly like cancellation does for the pre-shipment case. Returns null if
+ * not owned or not currently resolvable (already resolved, wrong status, no request at all).
+ */
+export async function resolveReturnRequestTransaction(
+  sellerId: string,
+  sellerOrderId: string,
+  decision: "approved" | "rejected"
+) {
+  return prisma.$transaction(async (tx) => {
+    const owned = await tx.sellerOrder.findFirst({
+      where: { id: sellerOrderId, sellerId, status: "delivered", returnRequest: { status: "pending" } },
+      include: { items: true, returnRequest: true },
+    });
+    if (!owned || !owned.returnRequest) return null;
+
+    await tx.returnRequest.update({
+      where: { id: owned.returnRequest.id },
+      data: { status: decision, resolvedAt: new Date() },
+    });
+
+    if (decision === "approved") {
+      await tx.sellerOrder.update({
+        where: { id: sellerOrderId },
+        data: { status: "returned" },
+      });
+
+      // Same plain increment as cancellation's stock release — no lower bound to protect here.
+      for (const item of owned.items) {
+        await tx.productVariant.update({
+          where: { id: item.productVariantId },
+          data: { stockQty: { increment: item.quantity } },
+        });
+      }
     }
 
     return tx.sellerOrder.findFirst({

@@ -1,6 +1,9 @@
 import "server-only";
+import { Prisma } from "@/generated/prisma/client";
 import { stripe } from "@/lib/stripe";
+import { sendEmail } from "@/lib/email";
 import { addressSchema, SHIPPING_COUNTRY, type AddressInput } from "@/lib/validations/checkout";
+import { requestReturnSchema, type RequestReturnInput } from "@/lib/validations/return-request";
 import { getCartWithItems, clearCartItems } from "@/server/data/cart";
 import {
   createOrderFromCart,
@@ -8,6 +11,7 @@ import {
   markPaymentFailed,
   updateOrderPaymentSession,
 } from "@/server/data/orders";
+import { findReturnableSellerOrderForBuyer, createReturnRequest } from "@/server/data/return-requests";
 
 export type CheckoutResult =
   | { ok: true; redirectUrl: string }
@@ -104,4 +108,46 @@ export async function retryOrderPayment(userId: string, orderId: string): Promis
   } catch {
     return { ok: false, formError: "Couldn't start the payment. Please try again shortly." };
   }
+}
+
+export type RequestReturnResult = { ok: true } | { ok: false; formError: string };
+
+export async function requestReturn(
+  buyerId: string,
+  sellerOrderId: string,
+  input: RequestReturnInput
+): Promise<RequestReturnResult> {
+  const parsed = requestReturnSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, formError: "Please fix the errors above and try again." };
+  }
+
+  const sellerOrder = await findReturnableSellerOrderForBuyer(buyerId, sellerOrderId);
+  if (!sellerOrder) {
+    return { ok: false, formError: "This order isn't eligible for a return request." };
+  }
+
+  try {
+    await createReturnRequest(sellerOrderId, parsed.data.reason);
+  } catch (err) {
+    // Race-safe backstop behind the eligibility check above: two concurrent submits for the
+    // same sub-order both pass the check, but only one can win the unique constraint.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return { ok: false, formError: "A return request has already been submitted for this order." };
+    }
+    throw err;
+  }
+
+  const sellerEmail = sellerOrder.seller.user.email;
+  await sendEmail({
+    to: sellerEmail,
+    subject: "New return request",
+    html: `<p>A buyer has requested a return for order ${sellerOrder.order.orderNumber}. Review it from your orders dashboard.</p>`,
+    text: `A buyer has requested a return for order ${sellerOrder.order.orderNumber}. Review it from your orders dashboard.`,
+  }).catch(() => {
+    // Best-effort notification — see seller-service.ts's approveSellerApplication for the same
+    // pattern: an email failure shouldn't fail an otherwise-successful request.
+  });
+
+  return { ok: true };
 }

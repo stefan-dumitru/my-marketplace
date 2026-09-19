@@ -186,6 +186,12 @@ enum SellerOrderStatus {
   returned
 }
 
+enum ReturnRequestStatus {
+  pending
+  approved
+  rejected
+}
+
 enum PaymentStatus {
   pending
   succeeded
@@ -254,13 +260,27 @@ model SellerOrder {
   payoutAt         DateTime?
   stripeTransferId String?
 
-  order  Order         @relation(fields: [orderId], references: [id])
-  seller SellerProfile @relation(fields: [sellerId], references: [id])
-  items  OrderItem[]
+  order         Order          @relation(fields: [orderId], references: [id])
+  seller        SellerProfile  @relation(fields: [sellerId], references: [id])
+  items         OrderItem[]
+  returnRequest ReturnRequest?
 
   @@index([orderId])
   @@index([sellerId])
   @@map("seller_orders")
+}
+
+model ReturnRequest {
+  id            String              @id @default(cuid())
+  sellerOrderId String              @unique
+  reason        String
+  status        ReturnRequestStatus @default(pending)
+  requestedAt   DateTime            @default(now())
+  resolvedAt    DateTime?
+
+  sellerOrder SellerOrder @relation(fields: [sellerOrderId], references: [id])
+
+  @@map("return_requests")
 }
 
 model OrderItem {
