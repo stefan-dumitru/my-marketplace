@@ -56,9 +56,11 @@ export function getProductByIdForSeller(sellerId: string, productId: string) {
  * updating by primary key. (Not relying on Prisma's "extra filters in update()'s where" — not
  * confirmed against this project's Prisma version — this pattern is unambiguous either way.)
  *
- * The nested `variants.updateMany` is safe here specifically because this codebase creates
- * exactly one variant per product (see createProductForSeller) — it is NOT a generalizable
- * multi-variant update.
+ * Targets the product's first/default variant specifically (by id, fetched during the same
+ * ownership read) rather than `variants.updateMany({ where: {} })` — now that a product can have
+ * more than one variant (see product-variant-service.ts), blindly updating every variant with
+ * this form's single price/stock field would silently corrupt the others. ProductForm's
+ * price/stockQty fields mean "the default variant," not "every variant."
  */
 export async function updateProductForSeller(
   sellerId: string,
@@ -75,9 +77,10 @@ export async function updateProductForSeller(
 ) {
   const owned = await prisma.product.findFirst({
     where: { id: productId, sellerId },
-    select: { id: true },
+    select: { id: true, variants: { select: { id: true }, orderBy: { id: "asc" }, take: 1 } },
   });
   if (!owned) return null;
+  const defaultVariantId = owned.variants[0]?.id;
 
   return prisma.product.update({
     where: { id: productId },
@@ -87,9 +90,14 @@ export async function updateProductForSeller(
       description: data.description || null,
       brand: data.brand || null,
       images: data.images,
-      variants: {
-        updateMany: { where: {}, data: { price: data.price, stockQty: data.stockQty } },
-      },
+      ...(defaultVariantId && {
+        variants: {
+          update: {
+            where: { id: defaultVariantId },
+            data: { price: data.price, stockQty: data.stockQty },
+          },
+        },
+      }),
     },
     include: { variants: true },
   });
@@ -195,4 +203,78 @@ export function listActiveProducts(opts?: { take?: number; q?: string; categoryS
       category: { select: { name: true, slug: true } },
     },
   });
+}
+
+// --- Variant CRUD ---
+// Ownership scoping only — the "last variant" / "has order history" business rules live in
+// product-variant-service.ts, same split already used elsewhere (e.g. category-service.ts's
+// "can't be its own parent" check sits above updateCategory's plain verify-then-update).
+
+export async function getVariantsForProduct(sellerId: string, productId: string) {
+  const owned = await prisma.product.findFirst({ where: { id: productId, sellerId }, select: { id: true } });
+  if (!owned) return null;
+
+  return prisma.productVariant.findMany({ where: { productId }, orderBy: { id: "asc" } });
+}
+
+export async function getVariantForProduct(sellerId: string, productId: string, variantId: string) {
+  const owned = await prisma.product.findFirst({ where: { id: productId, sellerId }, select: { id: true } });
+  if (!owned) return null;
+
+  return prisma.productVariant.findFirst({ where: { id: variantId, productId } });
+}
+
+export function getVariantBySellerAndSku(sellerId: string, sku: string) {
+  return prisma.productVariant.findFirst({ where: { sku, product: { sellerId } } });
+}
+
+export async function createVariantForProduct(
+  sellerId: string,
+  productId: string,
+  data: { sku: string; attributes: Record<string, string>; price: number; stockQty: number }
+) {
+  const owned = await prisma.product.findFirst({ where: { id: productId, sellerId }, select: { id: true } });
+  if (!owned) return null;
+
+  return prisma.productVariant.create({ data: { ...data, productId } });
+}
+
+export async function updateVariantForProduct(
+  sellerId: string,
+  productId: string,
+  variantId: string,
+  data: { attributes: Record<string, string>; price: number; stockQty: number }
+) {
+  const owned = await prisma.productVariant.findFirst({
+    where: { id: variantId, productId, product: { sellerId } },
+    select: { id: true },
+  });
+  if (!owned) return null;
+
+  return prisma.productVariant.update({ where: { id: variantId }, data });
+}
+
+export async function deleteVariantForProduct(sellerId: string, productId: string, variantId: string) {
+  const owned = await prisma.productVariant.findFirst({
+    where: { id: variantId, productId, product: { sellerId } },
+    select: { id: true },
+  });
+  if (!owned) return null;
+
+  // Cart contents aren't a committed record like OrderItem, so removing a variant that's
+  // sitting unpurchased in someone's cart should just clear it from those carts rather than
+  // being blocked by the FK constraint.
+  const [, deleted] = await prisma.$transaction([
+    prisma.cartItem.deleteMany({ where: { productVariantId: variantId } }),
+    prisma.productVariant.delete({ where: { id: variantId } }),
+  ]);
+  return deleted;
+}
+
+export function countVariantsForProduct(productId: string) {
+  return prisma.productVariant.count({ where: { productId } });
+}
+
+export function countOrderItemsForVariant(variantId: string) {
+  return prisma.orderItem.count({ where: { productVariantId: variantId } });
 }
