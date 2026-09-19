@@ -46,15 +46,15 @@ export function Header({ user }: Props) {
   const secondary = user ? roleNav(user) : null;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background">
+    <header className="sticky top-0 z-40 bg-primary text-primary-foreground shadow-sm">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
-          <Link href="/" className="text-lg font-semibold text-foreground">
+          <Link href="/" className="text-lg font-semibold text-primary-foreground">
             My Marketplace
           </Link>
           <Link
             href="/products"
-            className="hidden text-sm text-muted-foreground hover:text-foreground lg:block"
+            className="hidden text-sm text-primary-foreground/80 hover:text-primary-foreground lg:block"
           >
             Products
           </Link>
@@ -72,7 +72,7 @@ export function Header({ user }: Props) {
             {accountLabel}
           </Link>
           {!user && (
-            <Link href="/auth/register" className={buttonVariants()}>
+            <Link href="/auth/register" className={buttonVariants({ variant: "secondary" })}>
               Sign up
             </Link>
           )}
