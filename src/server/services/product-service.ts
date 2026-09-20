@@ -20,6 +20,7 @@ import {
 } from "@/server/data/products";
 import { createAuditLog } from "@/server/data/audit-log";
 import { slugify } from "@/lib/slug";
+import { splitPage } from "@/lib/pagination";
 
 export type CreateProductResult =
   | { ok: true }
@@ -118,15 +119,13 @@ export async function setProductActive(
   return { ok: true };
 }
 
-export function listProductsForSeller(sellerId: string) {
-  return listProductsForSellerData(sellerId);
+export async function listProductsForSeller(sellerId: string, page?: number) {
+  const rows = await listProductsForSellerData(sellerId, { page });
+  const { items, hasNextPage } = splitPage(rows);
+  return { products: items, hasNextPage };
 }
 
-export function listActiveProductsForStorefront(opts?: {
-  take?: number;
-  q?: string;
-  categorySlug?: string;
-}) {
+export function listActiveProductsForStorefront(opts?: { page?: number; q?: string; categorySlug?: string }) {
   return listActiveProducts(opts);
 }
 
@@ -140,8 +139,10 @@ export async function getProductForStorefront(slug: string) {
   return product;
 }
 
-export function getPendingProductsForAdmin() {
-  return listPendingProductsForAdmin();
+export async function getPendingProductsForAdmin(page?: number) {
+  const rows = await listPendingProductsForAdmin({ page });
+  const { items, hasNextPage } = splitPage(rows);
+  return { products: items, hasNextPage };
 }
 
 export async function approveProduct(

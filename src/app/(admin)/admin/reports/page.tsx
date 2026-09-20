@@ -3,7 +3,9 @@ import { getPlatformRevenueReport } from "@/server/services/report-service";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { StatTile } from "@/components/dashboard/StatTile";
+import { Pagination } from "@/components/shared/Pagination";
 import { formatPrice } from "@/lib/format";
+import { parsePage } from "@/lib/pagination";
 import type { ReportRange } from "@/server/data/reports";
 
 const RANGE_LABEL: Record<ReportRange, string> = {
@@ -13,15 +15,16 @@ const RANGE_LABEL: Record<ReportRange, string> = {
 };
 
 type Props = {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; page?: string }>;
 };
 
 export default async function AdminReportsPage({ searchParams }: Props) {
-  const { range: rangeParam } = await searchParams;
+  const { range: rangeParam, page: pageParam } = await searchParams;
   const range: ReportRange =
     rangeParam === "this_month" || rangeParam === "last_30_days" ? rangeParam : "all";
+  const page = parsePage(pageParam);
 
-  const { rows, totals } = await getPlatformRevenueReport(range);
+  const { rows, totals, hasNextPage } = await getPlatformRevenueReport(range, page);
 
   return (
     <div className="flex flex-col gap-6">
@@ -54,22 +57,25 @@ export default async function AdminReportsPage({ searchParams }: Props) {
       {rows.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No orders in this range.</Card>
       ) : (
-        <div className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <Card key={row.sellerId} className="flex items-center justify-between p-3 text-sm">
-              <div>
-                <p className="font-medium">{row.storeName}</p>
-                <p className="text-muted-foreground">{row.orderCount} orders</p>
-              </div>
-              <div className="text-right">
-                <p className="font-medium">{formatPrice(row.totalSubtotal)}</p>
-                <p className="text-muted-foreground">
-                  Commission: {formatPrice(row.totalCommission)} · Payout: {formatPrice(row.totalPayout)}
-                </p>
-              </div>
-            </Card>
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-2">
+            {rows.map((row) => (
+              <Card key={row.sellerId} className="flex items-center justify-between p-3 text-sm">
+                <div>
+                  <p className="font-medium">{row.storeName}</p>
+                  <p className="text-muted-foreground">{row.orderCount} orders</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium">{formatPrice(row.totalSubtotal)}</p>
+                  <p className="text-muted-foreground">
+                    Commission: {formatPrice(row.totalCommission)} · Payout: {formatPrice(row.totalPayout)}
+                  </p>
+                </div>
+              </Card>
+            ))}
+          </div>
+          <Pagination page={page} hasNextPage={hasNextPage} basePath="/admin/reports" extraParams={{ range }} />
+        </>
       )}
     </div>
   );

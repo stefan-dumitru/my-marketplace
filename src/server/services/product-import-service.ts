@@ -21,6 +21,7 @@ import {
   deactivateProductsNotInSkuSet,
 } from "@/server/data/product-import";
 import { uniqueProductSlug } from "@/server/services/product-service";
+import { splitPage } from "@/lib/pagination";
 import {
   importRowSkuSchema,
   importRowBaseSchema,
@@ -56,8 +57,10 @@ export function getImportBatch(sellerId: string, batchId: string) {
   return getImportBatchForSeller(sellerId, batchId);
 }
 
-export function getImportBatches(sellerId: string) {
-  return listImportBatchesForSeller(sellerId);
+export async function getImportBatches(sellerId: string, page?: number) {
+  const rows = await listImportBatchesForSeller(sellerId, { page });
+  const { items: batches, hasNextPage } = splitPage(rows);
+  return { batches, hasNextPage };
 }
 
 export async function importProducts(

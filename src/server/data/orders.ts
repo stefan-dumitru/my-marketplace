@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 const ORDER_INCLUDE = {
   sellerOrders: {
@@ -188,11 +189,13 @@ export function markPaymentFailed(orderId: string) {
   ]);
 }
 
-export function getOrdersForBuyer(buyerId: string, opts?: { take?: number }) {
+export function getOrdersForBuyer(buyerId: string, opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.order.findMany({
     where: { buyerId },
     orderBy: { createdAt: "desc" },
-    take: opts?.take ?? 50,
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
     include: ORDER_INCLUDE,
   });
 }

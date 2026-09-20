@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { getOrdersForBuyer } from "@/server/data/orders";
 import { Card } from "@/components/ui/card";
 import { formatPrice } from "@/lib/format";
+import { Pagination } from "@/components/shared/Pagination";
+import { parsePage, splitPage } from "@/lib/pagination";
 
 const STATUS_LABEL: Record<string, string> = {
   pending_payment: "Awaiting payment",
@@ -11,11 +13,17 @@ const STATUS_LABEL: Record<string, string> = {
   payment_failed: "Payment failed",
 };
 
-export default async function OrdersPage() {
+type Props = {
+  searchParams: Promise<{ page?: string }>;
+};
+
+export default async function OrdersPage({ searchParams }: Props) {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/orders");
 
-  const orders = await getOrdersForBuyer(session.user.id);
+  const page = parsePage((await searchParams).page);
+  const rows = await getOrdersForBuyer(session.user.id, { page });
+  const { items: orders, hasNextPage } = splitPage(rows);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
@@ -26,22 +34,27 @@ export default async function OrdersPage() {
           You haven&apos;t placed any orders yet.
         </Card>
       ) : (
-        <div className="flex flex-col gap-3">
-          {orders.map((order) => (
-            <Link key={order.id} href={`/orders/${order.id}`}>
-              <Card className="flex items-center justify-between p-4 text-sm">
-                <div>
-                  <p className="font-medium">{order.orderNumber}</p>
-                  <p className="text-muted-foreground">
-                    {new Date(order.createdAt).toLocaleDateString("ro-RO")} ·{" "}
-                    {STATUS_LABEL[order.status] ?? order.status}
-                  </p>
-                </div>
-                <p className="font-medium">{formatPrice(order.totalAmount)}</p>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-3">
+            {orders.map((order) => (
+              <Link key={order.id} href={`/orders/${order.id}`}>
+                <Card className="flex items-center justify-between p-4 text-sm">
+                  <div>
+                    <p className="font-medium">{order.orderNumber}</p>
+                    <p className="text-muted-foreground">
+                      {new Date(order.createdAt).toLocaleDateString("ro-RO")} ·{" "}
+                      {STATUS_LABEL[order.status] ?? order.status}
+                    </p>
+                  </div>
+                  <p className="font-medium">{formatPrice(order.totalAmount)}</p>
+                </Card>
+              </Link>
+            ))}
+          </div>
+          <div className="mt-4">
+            <Pagination page={page} hasNextPage={hasNextPage} basePath="/orders" />
+          </div>
+        </>
       )}
     </div>
   );

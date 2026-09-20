@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { ReviewStatus } from "@/generated/prisma/enums";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 /**
  * Ownership AND state eligibility both checked here, mirroring seller-orders.ts's
@@ -49,10 +50,13 @@ export async function getReviewSummaryForProduct(productId: string) {
   return { average: result._avg.rating, count: result._count };
 }
 
-export function listPendingReviews() {
+export function listPendingReviews(opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.review.findMany({
     where: { status: "pending" },
     orderBy: { createdAt: "asc" },
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
     include: {
       product: { select: { name: true, slug: true } },
       buyer: { select: { name: true, email: true } },

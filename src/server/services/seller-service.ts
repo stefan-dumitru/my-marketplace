@@ -20,6 +20,7 @@ import { sendEmail } from "@/lib/email";
 import { getUserById } from "@/server/data/users";
 import { createAuditLog } from "@/server/data/audit-log";
 import { notifyUser } from "@/server/services/notification-service";
+import { splitPage } from "@/lib/pagination";
 
 export type ApplyResult =
   | { ok: true }
@@ -183,12 +184,16 @@ export async function rejectSellerApplication(
   return { ok: true };
 }
 
-export function getApprovedSellers() {
-  return listApprovedSellerProfiles();
+export async function getApprovedSellers(page?: number) {
+  const rows = await listApprovedSellerProfiles({ page });
+  const { items: sellers, hasNextPage } = splitPage(rows);
+  return { sellers, hasNextPage };
 }
 
-export function getSuspendedSellers() {
-  return listSuspendedSellerProfiles();
+export async function getSuspendedSellers(page?: number) {
+  const rows = await listSuspendedSellerProfiles({ page });
+  const { items: sellers, hasNextPage } = splitPage(rows);
+  return { sellers, hasNextPage };
 }
 
 export async function suspendSeller(

@@ -6,14 +6,21 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ProductRow } from "@/components/seller/ProductRow";
 import { StatTile } from "@/components/dashboard/StatTile";
+import { Pagination } from "@/components/shared/Pagination";
 import { formatPrice } from "@/lib/format";
+import { parsePage } from "@/lib/pagination";
 
-export default async function SellerDashboardPage() {
+type Props = {
+  searchParams: Promise<{ page?: string }>;
+};
+
+export default async function SellerDashboardPage({ searchParams }: Props) {
   // Non-null: the (seller) layout already redirected away any non-approved seller.
   const context = await getSellerContext();
   const profile = context!.profile!;
-  const [products, stats] = await Promise.all([
-    listProductsForSeller(profile.id),
+  const page = parsePage((await searchParams).page);
+  const [{ products, hasNextPage }, stats] = await Promise.all([
+    listProductsForSeller(profile.id, page),
     getSellerDashboard(profile.id),
   ]);
 
@@ -52,11 +59,14 @@ export default async function SellerDashboardPage() {
           You haven&apos;t added any products yet.
         </Card>
       ) : (
-        <div className="flex flex-col gap-3">
-          {products.map((product) => (
-            <ProductRow key={product.id} product={product} />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-3">
+            {products.map((product) => (
+              <ProductRow key={product.id} product={product} />
+            ))}
+          </div>
+          <Pagination page={page} hasNextPage={hasNextPage} basePath="/seller" />
+        </>
       )}
     </div>
   );

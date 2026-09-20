@@ -4,7 +4,9 @@ import { getSellerSalesReport } from "@/server/services/report-service";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { StatTile } from "@/components/dashboard/StatTile";
+import { Pagination } from "@/components/shared/Pagination";
 import { formatPrice } from "@/lib/format";
+import { parsePage } from "@/lib/pagination";
 import type { ReportRange } from "@/server/data/reports";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -23,7 +25,7 @@ const RANGE_LABEL: Record<ReportRange, string> = {
 };
 
 type Props = {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; page?: string }>;
 };
 
 export default async function SellerSalesReportPage({ searchParams }: Props) {
@@ -31,11 +33,12 @@ export default async function SellerSalesReportPage({ searchParams }: Props) {
   const context = await getSellerContext();
   const profile = context!.profile!;
 
-  const { range: rangeParam } = await searchParams;
+  const { range: rangeParam, page: pageParam } = await searchParams;
   const range: ReportRange =
     rangeParam === "this_month" || rangeParam === "last_30_days" ? rangeParam : "all";
+  const page = parsePage(pageParam);
 
-  const { rows, summary } = await getSellerSalesReport(profile.id, range);
+  const { rows, summary, hasNextPage } = await getSellerSalesReport(profile.id, range, page);
 
   return (
     <div className="flex flex-col gap-6">
@@ -68,23 +71,26 @@ export default async function SellerSalesReportPage({ searchParams }: Props) {
       {rows.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No orders in this range.</Card>
       ) : (
-        <div className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <Card key={row.id} className="flex items-center justify-between p-3 text-sm">
-              <div>
-                <p className="font-medium">{row.order.orderNumber}</p>
-                <p className="text-muted-foreground">
-                  {new Date(row.order.createdAt).toLocaleDateString("ro-RO")} ·{" "}
-                  {STATUS_LABEL[row.status] ?? row.status}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="font-medium">{formatPrice(row.subtotal)}</p>
-                <p className="text-muted-foreground">Payout: {formatPrice(row.payoutAmount)}</p>
-              </div>
-            </Card>
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-2">
+            {rows.map((row) => (
+              <Card key={row.id} className="flex items-center justify-between p-3 text-sm">
+                <div>
+                  <p className="font-medium">{row.order.orderNumber}</p>
+                  <p className="text-muted-foreground">
+                    {new Date(row.order.createdAt).toLocaleDateString("ro-RO")} ·{" "}
+                    {STATUS_LABEL[row.status] ?? row.status}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium">{formatPrice(row.subtotal)}</p>
+                  <p className="text-muted-foreground">Payout: {formatPrice(row.payoutAmount)}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+          <Pagination page={page} hasNextPage={hasNextPage} basePath="/seller/reports" extraParams={{ range }} />
+        </>
       )}
     </div>
   );

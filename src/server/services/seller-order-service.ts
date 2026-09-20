@@ -14,6 +14,7 @@ import {
 import { createAuditLog } from "@/server/data/audit-log";
 import { getSellerDashboardStats } from "@/server/data/dashboard";
 import { notifyUser } from "@/server/services/notification-service";
+import { splitPage } from "@/lib/pagination";
 
 export type ShipOrderResult =
   | { ok: true }
@@ -22,8 +23,20 @@ export type ShipOrderResult =
 export type CancelOrderResult = { ok: true } | { ok: false; formError: string };
 export type ResolveReturnResult = { ok: true } | { ok: false; formError: string };
 
-export function getSellerOrders(sellerId: string) {
-  return listSellerOrdersForSeller(sellerId);
+export async function getSellerOrders(sellerId: string, page?: number) {
+  const rows = await listSellerOrdersForSeller(sellerId, { page });
+  const { items: sellerOrders, hasNextPage } = splitPage(rows);
+  return { sellerOrders, hasNextPage };
+}
+
+// Payouts history isn't in scope for the pagination increment (it's a filtered, at-a-glance
+// view, not a list surface meant to page through) — keeps its own uncapped-ish call at the old
+// default cap instead of going through getSellerOrders' paginated shape.
+const PAYOUTS_HISTORY_PAGE_SIZE = 50;
+
+export async function getSellerOrdersForPayouts(sellerId: string) {
+  const rows = await listSellerOrdersForSeller(sellerId, { pageSize: PAYOUTS_HISTORY_PAGE_SIZE });
+  return splitPage(rows, PAYOUTS_HISTORY_PAGE_SIZE).items;
 }
 
 export function getSellerDashboard(sellerId: string) {

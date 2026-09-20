@@ -1,6 +1,8 @@
 import { listAuditLogEntries } from "@/server/data/audit-log";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
+import { Pagination } from "@/components/shared/Pagination";
+import { parsePage, splitPage } from "@/lib/pagination";
 
 const ACTION_LABEL: Record<string, string> = {
   seller_approved: "Seller approved",
@@ -22,8 +24,14 @@ const ACTION_LABEL: Record<string, string> = {
   payment_failed: "Payment failed",
 };
 
-export default async function AdminAuditLogPage() {
-  const entries = await listAuditLogEntries();
+type Props = {
+  searchParams: Promise<{ page?: string }>;
+};
+
+export default async function AdminAuditLogPage({ searchParams }: Props) {
+  const page = parsePage((await searchParams).page);
+  const rows = await listAuditLogEntries({ page });
+  const { items: entries, hasNextPage } = splitPage(rows);
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,22 +45,25 @@ export default async function AdminAuditLogPage() {
       {entries.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No audit log entries yet.</Card>
       ) : (
-        <div className="flex flex-col gap-2">
-          {entries.map((entry) => (
-            <Card key={entry.id} className="flex items-center justify-between p-3 text-sm">
-              <div>
-                <p className="font-medium">{ACTION_LABEL[entry.action] ?? entry.action}</p>
-                <p className="text-muted-foreground">
-                  {entry.entityType} · {entry.entityId}
-                </p>
-              </div>
-              <div className="text-right text-muted-foreground">
-                <p>{entry.actor ? `${entry.actor.name} (${entry.actor.email})` : "System"}</p>
-                <p>{new Date(entry.createdAt).toLocaleString("ro-RO")}</p>
-              </div>
-            </Card>
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-2">
+            {entries.map((entry) => (
+              <Card key={entry.id} className="flex items-center justify-between p-3 text-sm">
+                <div>
+                  <p className="font-medium">{ACTION_LABEL[entry.action] ?? entry.action}</p>
+                  <p className="text-muted-foreground">
+                    {entry.entityType} · {entry.entityId}
+                  </p>
+                </div>
+                <div className="text-right text-muted-foreground">
+                  <p>{entry.actor ? `${entry.actor.name} (${entry.actor.email})` : "System"}</p>
+                  <p>{new Date(entry.createdAt).toLocaleString("ro-RO")}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+          <Pagination page={page} hasNextPage={hasNextPage} basePath="/admin/audit-log" />
+        </>
       )}
     </div>
   );

@@ -1,9 +1,16 @@
 import { getPendingProductsForAdmin } from "@/server/services/product-service";
 import { ProductModerationRow } from "@/components/admin/ProductModerationRow";
 import { Card } from "@/components/ui/card";
+import { Pagination } from "@/components/shared/Pagination";
+import { parsePage } from "@/lib/pagination";
 
-export default async function AdminProductsPage() {
-  const products = await getPendingProductsForAdmin();
+type Props = {
+  searchParams: Promise<{ page?: string }>;
+};
+
+export default async function AdminProductsPage({ searchParams }: Props) {
+  const page = parsePage((await searchParams).page);
+  const { products, hasNextPage } = await getPendingProductsForAdmin(page);
 
   return (
     <div className="flex flex-col gap-6">
@@ -12,11 +19,14 @@ export default async function AdminProductsPage() {
       {products.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No products pending review.</Card>
       ) : (
-        <div className="flex flex-col gap-3">
-          {products.map((product) => (
-            <ProductModerationRow key={product.id} product={product} />
-          ))}
-        </div>
+        <>
+          <div className="flex flex-col gap-3">
+            {products.map((product) => (
+              <ProductModerationRow key={product.id} product={product} />
+            ))}
+          </div>
+          <Pagination page={page} hasNextPage={hasNextPage} basePath="/admin/products" />
+        </>
       )}
     </div>
   );

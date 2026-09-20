@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_PAGE_SIZE, splitPage } from "@/lib/pagination";
 
 /**
  * Creates a Product and its single default ProductVariant in one nested-write Prisma call —
@@ -162,20 +163,24 @@ export function getProductBySlug(slug: string) {
   });
 }
 
-export function listProductsForSeller(sellerId: string, opts?: { take?: number }) {
+export function listProductsForSeller(sellerId: string, opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.product.findMany({
     where: { sellerId },
     orderBy: { createdAt: "desc" },
-    take: opts?.take ?? 50,
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
     include: { variants: true, category: { select: { name: true } } },
   });
 }
 
-export function listPendingProductsForAdmin(opts?: { take?: number }) {
+export function listPendingProductsForAdmin(opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.product.findMany({
     where: { status: "pending_review" },
     orderBy: { createdAt: "asc" },
-    take: opts?.take ?? 50,
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
     include: {
       seller: { select: { storeName: true } },
       category: { select: { name: true } },
@@ -227,6 +232,7 @@ const ACTIVE_PRODUCT_INCLUDE = {
 async function searchActiveProductIds(opts: {
   q: string;
   categorySlug?: string;
+  skip: number;
   take: number;
 }): Promise<string[]> {
   const categorySlug = opts.categorySlug ?? null;
@@ -243,8 +249,14 @@ async function searchActiveProductIds(opts: {
       )
     ORDER BY ts_rank(p."searchVector", websearch_to_tsquery('simple', ${opts.q})) DESC NULLS LAST,
              p."createdAt" DESC
+    OFFSET ${opts.skip}
     LIMIT ${opts.take}
   `;
+  // Note: for a hand-edited/out-of-range page number (not reachable via the rendered Prev/Next
+  // links, which only ever advance one page from a confirmed non-empty result), a page whose
+  // offset falls past the full-text match count but within the trigram-fallback match count
+  // could show trigram results where the previous page showed full-text ones. Accepted, flagged
+  // edge case — only reachable by manually editing the URL, not through normal navigation.
   if (ftsRows.length > 0) return ftsRows.map((r) => r.id);
 
   // Trigram fallback — only runs when the full-text query found nothing, e.g. a misspelled
@@ -266,30 +278,44 @@ async function searchActiveProductIds(opts: {
         AND (${categorySlug}::text IS NULL OR c.slug = ${categorySlug})
         AND ${opts.q} <% p.name
       ORDER BY word_similarity(${opts.q}, p.name) DESC
+      OFFSET ${opts.skip}
       LIMIT ${opts.take}
     `;
   });
   return trgmRows.map((r) => r.id);
 }
 
-export async function listActiveProducts(opts?: { take?: number; q?: string; categorySlug?: string }) {
-  const take = opts?.take ?? 24;
+const PRODUCTS_PAGE_SIZE = 24;
+
+export async function listActiveProducts(opts?: { page?: number; q?: string; categorySlug?: string }) {
+  const page = opts?.page ?? 1;
+  const skip = (page - 1) * PRODUCTS_PAGE_SIZE;
+  const take = PRODUCTS_PAGE_SIZE + 1;
 
   if (!opts?.q) {
-    return prisma.product.findMany({
+    const rows = await prisma.product.findMany({
       where: {
         status: "active",
         ...(opts?.categorySlug ? { category: { slug: opts.categorySlug } } : {}),
       },
       orderBy: { createdAt: "desc" },
+      skip,
       take,
       include: ACTIVE_PRODUCT_INCLUDE,
     });
+    const split = splitPage(rows, PRODUCTS_PAGE_SIZE);
+    return { products: split.items, hasNextPage: split.hasNextPage };
   }
 
-  const ids = await searchActiveProductIds({ q: opts.q, categorySlug: opts.categorySlug, take });
-  if (ids.length === 0) return [];
+  const ids = await searchActiveProductIds({ q: opts.q, categorySlug: opts.categorySlug, skip, take });
+  const { items: pageIds, hasNextPage } = splitPage(ids, PRODUCTS_PAGE_SIZE);
+  if (pageIds.length === 0) return { products: [], hasNextPage: false };
 
+  const products = await hydrateProducts(pageIds);
+  return { products, hasNextPage };
+}
+
+async function hydrateProducts(ids: string[]) {
   const products = await prisma.product.findMany({
     where: { id: { in: ids }, status: "active" },
     include: ACTIVE_PRODUCT_INCLUDE,

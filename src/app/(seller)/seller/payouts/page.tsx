@@ -1,5 +1,5 @@
 import { getSellerContext } from "@/server/services/seller-service";
-import { getSellerOrders } from "@/server/services/seller-order-service";
+import { getSellerOrdersForPayouts } from "@/server/services/seller-order-service";
 import { reconcileConnectStatus } from "@/server/services/connect-service";
 import { ConnectPayoutsCard } from "@/components/seller/ConnectPayoutsCard";
 import { Card } from "@/components/ui/card";
@@ -13,7 +13,7 @@ export default async function SellerPayoutsPage() {
 
   const [payoutsEnabled, sellerOrders] = await Promise.all([
     reconcileConnectStatus(profile.id),
-    getSellerOrders(profile.id),
+    getSellerOrdersForPayouts(profile.id),
   ]);
 
   const status = !profile.stripeConnectAccountId

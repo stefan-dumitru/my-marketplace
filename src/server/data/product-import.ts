@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ImportMode, ImportBatchStatus, ImportRecordAction } from "@/generated/prisma/enums";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 export function createImportBatch(sellerId: string, mode: ImportMode, totalRows: number) {
   return prisma.importBatch.create({
@@ -49,10 +50,13 @@ export function getImportBatchForSeller(sellerId: string, batchId: string) {
   });
 }
 
-export function listImportBatchesForSeller(sellerId: string) {
+export function listImportBatchesForSeller(sellerId: string, opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.importBatch.findMany({
     where: { sellerId },
     orderBy: { startedAt: "desc" },
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
   });
 }
 

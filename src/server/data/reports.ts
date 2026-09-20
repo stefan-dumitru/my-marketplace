@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 export type ReportRange = "this_month" | "last_30_days" | "all";
 
@@ -16,12 +17,16 @@ const SELLER_SALES_ROW_INCLUDE = {
   order: { select: { orderNumber: true, createdAt: true } },
 } as const;
 
-export function getSellerSalesRows(sellerId: string, range: ReportRange) {
+// `page` omitted (as the CSV export call site does) returns the complete, unpaginated dataset —
+// only the on-screen report page passes `page`.
+export function getSellerSalesRows(sellerId: string, range: ReportRange, opts?: { page?: number }) {
   const start = rangeStart(range);
+  const page = opts?.page;
   return prisma.sellerOrder.findMany({
     where: { sellerId, ...(start ? { order: { createdAt: { gte: start } } } : {}) },
     orderBy: { order: { createdAt: "desc" } },
     include: SELLER_SALES_ROW_INCLUDE,
+    ...(page ? { skip: (page - 1) * DEFAULT_PAGE_SIZE, take: DEFAULT_PAGE_SIZE + 1 } : {}),
   });
 }
 
@@ -48,16 +53,29 @@ export function getSellerPayoutHistoryRows(sellerId: string) {
   });
 }
 
-export async function getPlatformRevenueBySeller(range: ReportRange) {
+// `page` omitted (as the CSV export call site does) returns every seller's row. Totals are
+// computed from their own separate, un-paginated aggregate — not by reducing `rows` — since
+// `rows` may only be one page of sellers once `page` is passed for the on-screen report.
+export async function getPlatformRevenueBySeller(range: ReportRange, opts?: { page?: number }) {
   const start = rangeStart(range);
   const dateFilter = start ? { order: { createdAt: { gte: start } } } : {};
+  const page = opts?.page;
 
-  const grouped = await prisma.sellerOrder.groupBy({
-    by: ["sellerId"],
-    where: dateFilter,
-    _count: true,
-    _sum: { subtotal: true, commissionAmount: true, payoutAmount: true },
-  });
+  const [grouped, totalsAgg] = await Promise.all([
+    prisma.sellerOrder.groupBy({
+      by: ["sellerId"],
+      where: dateFilter,
+      _count: true,
+      _sum: { subtotal: true, commissionAmount: true, payoutAmount: true },
+      orderBy: { sellerId: "asc" },
+      ...(page ? { skip: (page - 1) * DEFAULT_PAGE_SIZE, take: DEFAULT_PAGE_SIZE + 1 } : {}),
+    }),
+    prisma.sellerOrder.aggregate({
+      where: dateFilter,
+      _count: true,
+      _sum: { subtotal: true, commissionAmount: true, payoutAmount: true },
+    }),
+  ]);
 
   const sellers = await prisma.sellerProfile.findMany({
     where: { id: { in: grouped.map((g) => g.sellerId) } },
@@ -74,15 +92,12 @@ export async function getPlatformRevenueBySeller(range: ReportRange) {
     totalPayout: g._sum.payoutAmount ?? 0,
   }));
 
-  const totals = rows.reduce(
-    (acc, r) => ({
-      orderCount: acc.orderCount + r.orderCount,
-      totalSubtotal: acc.totalSubtotal + Number(r.totalSubtotal),
-      totalCommission: acc.totalCommission + Number(r.totalCommission),
-      totalPayout: acc.totalPayout + Number(r.totalPayout),
-    }),
-    { orderCount: 0, totalSubtotal: 0, totalCommission: 0, totalPayout: 0 }
-  );
+  const totals = {
+    orderCount: totalsAgg._count,
+    totalSubtotal: Number(totalsAgg._sum.subtotal ?? 0),
+    totalCommission: Number(totalsAgg._sum.commissionAmount ?? 0),
+    totalPayout: Number(totalsAgg._sum.payoutAmount ?? 0),
+  };
 
   return { rows, totals };
 }

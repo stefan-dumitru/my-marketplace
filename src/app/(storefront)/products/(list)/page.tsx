@@ -3,6 +3,8 @@ import { listActiveProductsForStorefront } from "@/server/services/product-servi
 import { listActiveCategories } from "@/server/data/categories";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ProductFilterForm } from "@/components/product/ProductFilterForm";
+import { Pagination } from "@/components/shared/Pagination";
+import { parsePage } from "@/lib/pagination";
 
 // This page has no dynamic API usage (no auth/cookies) beyond searchParams, which only forces
 // per-query-string dynamic rendering — without this, Next's Full Route Cache would happily keep
@@ -12,14 +14,15 @@ import { ProductFilterForm } from "@/components/product/ProductFilterForm";
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ q?: string; category?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; page?: string }>;
 };
 
 export default async function ProductsPage({ searchParams }: Props) {
-  const { q, category } = await searchParams;
+  const { q, category, page: pageParam } = await searchParams;
+  const page = parsePage(pageParam);
 
-  const [products, categories] = await Promise.all([
-    listActiveProductsForStorefront({ take: 24, q: q || undefined, categorySlug: category || undefined }),
+  const [{ products, hasNextPage }, categories] = await Promise.all([
+    listActiveProductsForStorefront({ page, q: q || undefined, categorySlug: category || undefined }),
     listActiveCategories(),
   ]);
 
@@ -43,11 +46,21 @@ export default async function ProductsPage({ searchParams }: Props) {
           <p className="text-muted-foreground">No products yet.</p>
         )
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {products.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+          <div className="mt-6">
+            <Pagination
+              page={page}
+              hasNextPage={hasNextPage}
+              basePath="/products"
+              extraParams={{ q, category }}
+            />
+          </div>
+        </>
       )}
     </div>
   );

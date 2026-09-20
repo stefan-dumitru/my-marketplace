@@ -10,6 +10,7 @@ import {
   setReviewStatus,
 } from "@/server/data/reviews";
 import { createAuditLog } from "@/server/data/audit-log";
+import { splitPage } from "@/lib/pagination";
 
 export type SubmitReviewResult =
   | { ok: true }
@@ -62,8 +63,10 @@ export async function getProductReviews(productId: string) {
   return { reviews, summary };
 }
 
-export function listPendingReviewsForAdmin() {
-  return listPendingReviews();
+export async function listPendingReviewsForAdmin(page?: number) {
+  const rows = await listPendingReviews({ page });
+  const { items: reviews, hasNextPage } = splitPage(rows);
+  return { reviews, hasNextPage };
 }
 
 export async function moderateReview(

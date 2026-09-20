@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 export function getSellerProfileByUserId(userId: string) {
   return prisma.sellerProfile.findUnique({ where: { userId } });
@@ -33,11 +34,13 @@ export function createSellerApplication(input: {
   });
 }
 
-export function listPendingSellerApplications(opts?: { take?: number }) {
+export function listPendingSellerApplications(opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.sellerProfile.findMany({
     where: { status: "pending" },
     orderBy: { appliedAt: "asc" },
-    take: opts?.take ?? 50,
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
     include: { user: { select: { name: true, email: true } } },
   });
 }
@@ -71,18 +74,24 @@ export function rejectSellerApplication(sellerProfileId: string) {
   });
 }
 
-export function listApprovedSellerProfiles() {
+export function listApprovedSellerProfiles(opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.sellerProfile.findMany({
     where: { status: "approved" },
     orderBy: { storeName: "asc" },
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
     include: { user: { select: { name: true, email: true } } },
   });
 }
 
-export function listSuspendedSellerProfiles() {
+export function listSuspendedSellerProfiles(opts?: { page?: number }) {
+  const page = opts?.page ?? 1;
   return prisma.sellerProfile.findMany({
     where: { status: "suspended" },
     orderBy: { storeName: "asc" },
+    skip: (page - 1) * DEFAULT_PAGE_SIZE,
+    take: DEFAULT_PAGE_SIZE + 1,
     include: { user: { select: { name: true, email: true } } },
   });
 }

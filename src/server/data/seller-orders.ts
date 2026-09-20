@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 const SELLER_ORDER_INCLUDE = {
   items: true,
@@ -15,11 +16,17 @@ const SELLER_ORDER_INCLUDE = {
   },
 } as const;
 
-export function listSellerOrdersForSeller(sellerId: string, opts?: { take?: number }) {
+export function listSellerOrdersForSeller(
+  sellerId: string,
+  opts?: { page?: number; pageSize?: number }
+) {
+  const page = opts?.page ?? 1;
+  const pageSize = opts?.pageSize ?? DEFAULT_PAGE_SIZE;
   return prisma.sellerOrder.findMany({
     where: { sellerId },
     orderBy: { order: { createdAt: "desc" } }, // no createdAt on SellerOrder itself; use the parent order's
-    take: opts?.take ?? 50,
+    skip: (page - 1) * pageSize,
+    take: pageSize + 1,
     include: {
       items: true,
       returnRequest: { select: { status: true } },
