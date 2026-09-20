@@ -28,6 +28,9 @@ export default async function SellerDashboardPage() {
           <Link href="/seller/payouts" className={buttonVariants({ variant: "outline" })}>
             Payouts
           </Link>
+          <Link href="/seller/reports" className={buttonVariants({ variant: "outline" })}>
+            Sales report
+          </Link>
           <Link href="/seller/products/import" className={buttonVariants({ variant: "outline" })}>
             Import CSV
           </Link>

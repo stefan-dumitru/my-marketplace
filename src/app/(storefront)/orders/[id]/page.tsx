@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getOrderByIdForBuyer } from "@/server/data/orders";
 import { Card } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { formatPrice } from "@/lib/format";
 import { ReviewForm } from "@/components/review/ReviewForm";
 import { ReturnRequestForm } from "@/components/order/ReturnRequestForm";
@@ -58,12 +59,17 @@ export default async function OrderDetailPage({ params }: Props) {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
-      <div>
-        <h1 className="text-2xl font-semibold">{order.orderNumber}</h1>
-        <p className="text-sm text-muted-foreground">
-          {new Date(order.createdAt).toLocaleString("ro-RO")} ·{" "}
-          {STATUS_LABEL[order.status] ?? order.status}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">{order.orderNumber}</h1>
+          <p className="text-sm text-muted-foreground">
+            {new Date(order.createdAt).toLocaleString("ro-RO")} ·{" "}
+            {STATUS_LABEL[order.status] ?? order.status}
+          </p>
+        </div>
+        <a href={`/api/orders/${order.id}/invoice`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Download invoice
+        </a>
       </div>
 
       {order.sellerOrders.map((sellerOrder) => (

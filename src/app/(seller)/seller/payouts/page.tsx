@@ -3,6 +3,7 @@ import { getSellerOrders } from "@/server/services/seller-order-service";
 import { reconcileConnectStatus } from "@/server/services/connect-service";
 import { ConnectPayoutsCard } from "@/components/seller/ConnectPayoutsCard";
 import { Card } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { formatPrice } from "@/lib/format";
 
 export default async function SellerPayoutsPage() {
@@ -30,7 +31,12 @@ export default async function SellerPayoutsPage() {
       <ConnectPayoutsCard status={status} />
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Payout history</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Payout history</h2>
+          <a href="/api/seller/reports/payouts" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Download CSV
+          </a>
+        </div>
         {deliveredOrders.length === 0 ? (
           <Card className="p-6 text-sm text-muted-foreground">No delivered orders yet.</Card>
         ) : (

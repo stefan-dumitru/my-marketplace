@@ -1,5 +1,6 @@
 import { listAuditLogEntries } from "@/server/data/audit-log";
 import { Card } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 
 const ACTION_LABEL: Record<string, string> = {
   seller_approved: "Seller approved",
@@ -26,7 +27,12 @@ export default async function AdminAuditLogPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Audit log</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Audit log</h1>
+        <a href="/api/admin/reports/audit-log" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Download CSV
+        </a>
+      </div>
 
       {entries.length === 0 ? (
         <Card className="p-6 text-sm text-muted-foreground">No audit log entries yet.</Card>
