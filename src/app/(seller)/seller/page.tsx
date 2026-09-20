@@ -1,15 +1,21 @@
 import Link from "next/link";
 import { getSellerContext } from "@/server/services/seller-service";
 import { listProductsForSeller } from "@/server/services/product-service";
+import { getSellerDashboard } from "@/server/services/seller-order-service";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ProductRow } from "@/components/seller/ProductRow";
+import { StatTile } from "@/components/dashboard/StatTile";
+import { formatPrice } from "@/lib/format";
 
 export default async function SellerDashboardPage() {
   // Non-null: the (seller) layout already redirected away any non-approved seller.
   const context = await getSellerContext();
   const profile = context!.profile!;
-  const products = await listProductsForSeller(profile.id);
+  const [products, stats] = await Promise.all([
+    listProductsForSeller(profile.id),
+    getSellerDashboard(profile.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -29,6 +35,13 @@ export default async function SellerDashboardPage() {
             Add product
           </Link>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile label="Orders this month" value={stats.ordersThisMonth} />
+        <StatTile label="Pending shipment" value={stats.pendingShipment} />
+        <StatTile label="Low stock" value={stats.lowStockCount} />
+        <StatTile label="Pending payout" value={formatPrice(stats.pendingPayoutAmount)} />
       </div>
 
       {products.length === 0 ? (

@@ -12,6 +12,7 @@ import {
   resolveReturnRequestTransaction,
 } from "@/server/data/seller-orders";
 import { createAuditLog } from "@/server/data/audit-log";
+import { getSellerDashboardStats } from "@/server/data/dashboard";
 
 export type ShipOrderResult =
   | { ok: true }
@@ -22,6 +23,10 @@ export type ResolveReturnResult = { ok: true } | { ok: false; formError: string 
 
 export function getSellerOrders(sellerId: string) {
   return listSellerOrdersForSeller(sellerId);
+}
+
+export function getSellerDashboard(sellerId: string) {
+  return getSellerDashboardStats(sellerId);
 }
 
 export function getSellerOrderForSeller(sellerId: string, sellerOrderId: string) {
