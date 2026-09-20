@@ -19,7 +19,7 @@ export function findReturnableSellerOrderForBuyer(buyerId: string, sellerOrderId
       id: true,
       subtotal: true,
       order: { select: { orderNumber: true } },
-      seller: { select: { storeName: true, user: { select: { email: true } } } },
+      seller: { select: { storeName: true, user: { select: { id: true, email: true } } } },
     },
   });
 }

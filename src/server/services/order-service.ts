@@ -12,6 +12,7 @@ import {
   updateOrderPaymentSession,
 } from "@/server/data/orders";
 import { findReturnableSellerOrderForBuyer, createReturnRequest } from "@/server/data/return-requests";
+import { notifyUser } from "@/server/services/notification-service";
 
 export type CheckoutResult =
   | { ok: true; redirectUrl: string }
@@ -139,15 +140,24 @@ export async function requestReturn(
   }
 
   const sellerEmail = sellerOrder.seller.user.email;
+  const title = "New return request";
+  const body = `A buyer has requested a return for order ${sellerOrder.order.orderNumber}. Review it from your orders dashboard.`;
   await sendEmail({
     to: sellerEmail,
-    subject: "New return request",
-    html: `<p>A buyer has requested a return for order ${sellerOrder.order.orderNumber}. Review it from your orders dashboard.</p>`,
-    text: `A buyer has requested a return for order ${sellerOrder.order.orderNumber}. Review it from your orders dashboard.`,
+    subject: title,
+    html: `<p>${body}</p>`,
+    text: body,
   }).catch(() => {
     // Best-effort notification — see seller-service.ts's approveSellerApplication for the same
     // pattern: an email failure shouldn't fail an otherwise-successful request.
   });
+  await notifyUser({
+    userId: sellerOrder.seller.user.id,
+    type: "return_request_submitted",
+    title,
+    body,
+    link: `/seller/orders/${sellerOrderId}`,
+  }).catch(() => {});
 
   return { ok: true };
 }

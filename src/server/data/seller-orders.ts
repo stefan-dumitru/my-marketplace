@@ -10,7 +10,7 @@ const SELLER_ORDER_INCLUDE = {
       shippingAddressSnapshot: true,
       createdAt: true,
       payment: { select: { stripePaymentIntentId: true } },
-      buyer: { select: { email: true } },
+      buyer: { select: { id: true, email: true } },
     },
   },
 } as const;

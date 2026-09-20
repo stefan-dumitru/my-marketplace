@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, ShoppingCart } from "lucide-react";
+import { Bell, Menu, ShoppingCart } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -14,7 +14,7 @@ import {
 import type { UserRole } from "@/generated/prisma/enums";
 
 type Props = {
-  user: { role: UserRole; cartItemCount: number } | null;
+  user: { role: UserRole; cartItemCount: number; unreadNotificationCount: number } | null;
 };
 
 function roleNav(user: Props["user"]) {
@@ -32,6 +32,21 @@ function CartLink({ count }: { count: number }) {
       </Button>
       {count > 0 && (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sale px-1 text-[10px] font-medium text-sale-foreground">
+          {count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function NotificationsLink({ count }: { count: number }) {
+  return (
+    <Link href="/notifications" className="relative inline-flex" aria-label="Notifications">
+      <Button variant="ghost" size="icon">
+        <Bell />
+      </Button>
+      {count > 0 && (
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-background px-1 text-[10px] font-medium text-foreground">
           {count}
         </span>
       )}
@@ -62,6 +77,7 @@ export function Header({ user }: Props) {
 
         {/* Desktop nav: >1024px per ui-guidelines.md breakpoints */}
         <nav className="hidden items-center gap-2 lg:flex">
+          {user && <NotificationsLink count={user.unreadNotificationCount} />}
           {user && <CartLink count={user.cartItemCount} />}
           {secondary && (
             <Link href={secondary.href} className={buttonVariants({ variant: "ghost" })}>
@@ -80,6 +96,7 @@ export function Header({ user }: Props) {
 
         {/* Mobile/tablet nav: <1024px, hamburger trigger */}
         <div className="flex items-center gap-1 lg:hidden">
+          {user && <NotificationsLink count={user.unreadNotificationCount} />}
           {user && <CartLink count={user.cartItemCount} />}
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger render={<Button variant="ghost" size="icon" />}>

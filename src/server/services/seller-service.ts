@@ -19,6 +19,7 @@ import { slugify } from "@/lib/slug";
 import { sendEmail } from "@/lib/email";
 import { getUserById } from "@/server/data/users";
 import { createAuditLog } from "@/server/data/audit-log";
+import { notifyUser } from "@/server/services/notification-service";
 
 export type ApplyResult =
   | { ok: true }
@@ -77,15 +78,24 @@ export async function applyForSellerAccount(
 
   const user = await getUserById(userId);
   if (user) {
+    const receivedTitle = "Seller application received";
+    const receivedBody = "Thanks for applying to sell on My Marketplace. We'll review your application and let you know once it's decided.";
     await sendEmail({
       to: user.email,
-      subject: "Seller application received",
-      html: `<p>Thanks for applying to sell on My Marketplace. We'll review your application and let you know once it's decided.</p>`,
-      text: `Thanks for applying to sell on My Marketplace. We'll review your application and let you know once it's decided.`,
+      subject: receivedTitle,
+      html: `<p>${receivedBody}</p>`,
+      text: receivedBody,
     }).catch(() => {
       // Best-effort notification — an email failure shouldn't fail an otherwise-successful
       // application, matching operations.md's "app still completes even if the email is delayed."
     });
+    await notifyUser({
+      userId: user.id,
+      type: "seller_application_received",
+      title: receivedTitle,
+      body: receivedBody,
+      link: "/sell",
+    }).catch(() => {});
   }
 
   return { ok: true };
@@ -112,11 +122,20 @@ export async function approveSellerApplication(
 
   const user = await getUserById(profile.userId);
   if (user) {
+    const approvedTitle = "You're approved to sell on My Marketplace";
+    const approvedBody = `Congratulations — your seller application for "${profile.storeName}" has been approved. You can now list products.`;
     await sendEmail({
       to: user.email,
-      subject: "You're approved to sell on My Marketplace",
-      html: `<p>Congratulations — your seller application for "${profile.storeName}" has been approved. You can now list products.</p>`,
-      text: `Congratulations — your seller application for "${profile.storeName}" has been approved. You can now list products.`,
+      subject: approvedTitle,
+      html: `<p>${approvedBody}</p>`,
+      text: approvedBody,
+    }).catch(() => {});
+    await notifyUser({
+      userId: user.id,
+      type: "seller_application_approved",
+      title: approvedTitle,
+      body: approvedBody,
+      link: "/sell",
     }).catch(() => {});
   }
 
@@ -144,11 +163,20 @@ export async function rejectSellerApplication(
 
   const user = await getUserById(profile.userId);
   if (user) {
+    const rejectedTitle = "Update on your seller application";
+    const rejectedBody = `Thanks for your interest in selling on My Marketplace. After review, we're not able to approve your application for "${profile.storeName}" at this time.`;
     await sendEmail({
       to: user.email,
-      subject: "Update on your seller application",
-      html: `<p>Thanks for your interest in selling on My Marketplace. After review, we're not able to approve your application for "${profile.storeName}" at this time.</p>`,
-      text: `Thanks for your interest in selling on My Marketplace. After review, we're not able to approve your application for "${profile.storeName}" at this time.`,
+      subject: rejectedTitle,
+      html: `<p>${rejectedBody}</p>`,
+      text: rejectedBody,
+    }).catch(() => {});
+    await notifyUser({
+      userId: user.id,
+      type: "seller_application_rejected",
+      title: rejectedTitle,
+      body: rejectedBody,
+      link: "/sell",
     }).catch(() => {});
   }
 
@@ -184,11 +212,20 @@ export async function suspendSeller(
 
   const user = await getUserById(profile.userId);
   if (user) {
+    const suspendedTitle = "Your seller account has been suspended";
+    const suspendedBody = `Your seller account "${profile.storeName}" has been suspended and your listings have been deactivated. Contact support for next steps.`;
     await sendEmail({
       to: user.email,
-      subject: "Your seller account has been suspended",
-      html: `<p>Your seller account "${profile.storeName}" has been suspended and your listings have been deactivated. Contact support for next steps.</p>`,
-      text: `Your seller account "${profile.storeName}" has been suspended and your listings have been deactivated. Contact support for next steps.`,
+      subject: suspendedTitle,
+      html: `<p>${suspendedBody}</p>`,
+      text: suspendedBody,
+    }).catch(() => {});
+    await notifyUser({
+      userId: user.id,
+      type: "seller_suspended",
+      title: suspendedTitle,
+      body: suspendedBody,
+      link: "/sell",
     }).catch(() => {});
   }
 
@@ -214,11 +251,20 @@ export async function reinstateSeller(
 
   const user = await getUserById(updated.userId);
   if (user) {
+    const reinstatedTitle = "Your seller account has been reinstated";
+    const reinstatedBody = `Your seller account "${updated.storeName}" has been reinstated. Your previous listings are still inactive — reactivate each one from your dashboard when you're ready.`;
     await sendEmail({
       to: user.email,
-      subject: "Your seller account has been reinstated",
-      html: `<p>Your seller account "${updated.storeName}" has been reinstated. Your previous listings are still inactive — reactivate each one from your dashboard when you're ready.</p>`,
-      text: `Your seller account "${updated.storeName}" has been reinstated. Your previous listings are still inactive — reactivate each one from your dashboard when you're ready.`,
+      subject: reinstatedTitle,
+      html: `<p>${reinstatedBody}</p>`,
+      text: reinstatedBody,
+    }).catch(() => {});
+    await notifyUser({
+      userId: user.id,
+      type: "seller_reinstated",
+      title: reinstatedTitle,
+      body: reinstatedBody,
+      link: "/seller",
     }).catch(() => {});
   }
 

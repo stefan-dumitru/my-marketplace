@@ -48,8 +48,38 @@ model User {
   reviews       Review[]
   auditLogs     AuditLog[]
   addresses     Address[]
+  notifications Notification[]
 
   @@map("users")
+}
+
+enum NotificationType {
+  return_request_submitted
+  order_delivered
+  return_rejected
+  return_approved
+  seller_application_received
+  seller_application_approved
+  seller_application_rejected
+  seller_suspended
+  seller_reinstated
+  import_completed
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+  @@map("notifications")
 }
 
 model VerificationToken {

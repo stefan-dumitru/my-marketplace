@@ -2,6 +2,7 @@ import "server-only";
 import { parse } from "csv-parse/sync";
 import { sendEmail } from "@/lib/email";
 import { createAuditLog } from "@/server/data/audit-log";
+import { notifyUser } from "@/server/services/notification-service";
 import { getCategoryBySlug } from "@/server/data/categories";
 import {
   createProductForSeller,
@@ -219,14 +220,23 @@ export async function importProducts(
     afterValue: { mode, totalRows: rawRows.length, succeededRows, failedRows },
   });
 
+  const importTitle = "Bulk import completed";
+  const importBody = `Your product import finished: ${succeededRows} row(s) succeeded, ${failedRows} row(s) failed, out of ${rawRows.length} total.`;
   await sendEmail({
     to: sellerEmail,
-    subject: "Bulk import completed",
-    html: `<p>Your product import finished: ${succeededRows} row(s) succeeded, ${failedRows} row(s) failed, out of ${rawRows.length} total.</p>`,
-    text: `Your product import finished: ${succeededRows} row(s) succeeded, ${failedRows} row(s) failed, out of ${rawRows.length} total.`,
+    subject: importTitle,
+    html: `<p>${importBody}</p>`,
+    text: importBody,
   }).catch(() => {
     // Best-effort notification — an email failure shouldn't fail an otherwise-completed import.
   });
+  await notifyUser({
+    userId: actorUserId,
+    type: "import_completed",
+    title: importTitle,
+    body: importBody,
+    link: `/seller/products/import/${batch.id}`,
+  }).catch(() => {});
 
   return { ok: true, batchId: batch.id };
 }

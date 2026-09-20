@@ -13,6 +13,7 @@ import {
 } from "@/server/data/seller-orders";
 import { createAuditLog } from "@/server/data/audit-log";
 import { getSellerDashboardStats } from "@/server/data/dashboard";
+import { notifyUser } from "@/server/services/notification-service";
 
 export type ShipOrderResult =
   | { ok: true }
@@ -87,15 +88,24 @@ export async function markDelivered(
 
   const buyerEmail = updated.order.buyer.email;
   const orderNumber = updated.order.orderNumber;
+  const deliveredTitle = "Your order has been delivered";
+  const deliveredBody = `Your order ${orderNumber} has been marked as delivered. You can now leave a review from your order page.`;
   await sendEmail({
     to: buyerEmail,
-    subject: "Your order has been delivered",
+    subject: deliveredTitle,
     html: `<p>Your order ${orderNumber} has been marked as delivered. Let us know what you think — you can now leave a review from your order page.</p>`,
-    text: `Your order ${orderNumber} has been marked as delivered. You can now leave a review from your order page.`,
+    text: deliveredBody,
   }).catch(() => {
     // Best-effort notification — see seller-service.ts's approveSellerApplication for the same
     // pattern: an email failure shouldn't fail an otherwise-successful status change.
   });
+  await notifyUser({
+    userId: updated.order.buyer.id,
+    type: "order_delivered",
+    title: deliveredTitle,
+    body: deliveredBody,
+    link: `/orders/${updated.orderId}`,
+  }).catch(() => {});
 
   return { ok: true };
 }
@@ -217,14 +227,23 @@ export async function resolveReturn(
     });
 
     if (decision === "rejected") {
+      const rejectedTitle = "Your return request was not approved";
+      const rejectedBody = `Your return request for order ${current.order.orderNumber} was not approved by the seller.`;
       await sendEmail({
         to: current.order.buyer.email,
-        subject: "Your return request was not approved",
-        html: `<p>Your return request for order ${current.order.orderNumber} was not approved by the seller.</p>`,
-        text: `Your return request for order ${current.order.orderNumber} was not approved by the seller.`,
+        subject: rejectedTitle,
+        html: `<p>${rejectedBody}</p>`,
+        text: rejectedBody,
       }).catch(() => {
         // Best-effort notification — see markDelivered for the same pattern.
       });
+      await notifyUser({
+        userId: current.order.buyer.id,
+        type: "return_rejected",
+        title: rejectedTitle,
+        body: rejectedBody,
+        link: `/orders/${current.orderId}`,
+      }).catch(() => {});
       return { ok: true };
     }
   }
@@ -263,14 +282,23 @@ export async function resolveReturn(
     afterValue: { amount: current.subtotal.toString(), reason: "return" },
   });
 
+  const approvedTitle = "Your return has been approved and refunded";
+  const approvedBody = `Your return for order ${current.order.orderNumber} has been approved and refunded.`;
   await sendEmail({
     to: current.order.buyer.email,
-    subject: "Your return has been approved and refunded",
-    html: `<p>Your return for order ${current.order.orderNumber} has been approved and refunded.</p>`,
-    text: `Your return for order ${current.order.orderNumber} has been approved and refunded.`,
+    subject: approvedTitle,
+    html: `<p>${approvedBody}</p>`,
+    text: approvedBody,
   }).catch(() => {
     // Best-effort notification — see markDelivered for the same pattern.
   });
+  await notifyUser({
+    userId: current.order.buyer.id,
+    type: "return_approved",
+    title: approvedTitle,
+    body: approvedBody,
+    link: `/orders/${current.orderId}`,
+  }).catch(() => {});
 
   return { ok: true };
 }

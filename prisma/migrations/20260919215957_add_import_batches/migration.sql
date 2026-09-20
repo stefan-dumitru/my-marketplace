@@ -46,13 +46,3 @@ ALTER TABLE "import_batches" ADD CONSTRAINT "import_batches_sellerId_fkey" FOREI
 
 -- AddForeignKey
 ALTER TABLE "import_batch_records" ADD CONSTRAINT "import_batch_records_importBatchId_fkey" FOREIGN KEY ("importBatchId") REFERENCES "import_batches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- Prisma's migration-diff engine doesn't understand generated columns and misread
--- Product.searchVector's generated-column metadata as drift, auto-generating a DROP INDEX +
--- ALTER COLUMN ... DROP DEFAULT pair that has nothing to do with this migration's actual purpose
--- (see the "add_product_search_vector" migration for the real definition). That auto-generated
--- version failed outright (Postgres refuses DROP DEFAULT on a generated column) but not before its
--- two DROP INDEX statements had already committed individually, since this script isn't run as one
--- atomic transaction. Recreating them here, unchanged from their original definition, repairs that.
-CREATE INDEX "products_search_vector_idx" ON "products" USING GIN ("searchVector");
-CREATE INDEX "products_name_trgm_idx" ON "products" USING GIN ("name" gin_trgm_ops);
