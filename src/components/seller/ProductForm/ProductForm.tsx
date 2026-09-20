@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import {
   type CreateProductInput,
   type CreateProductFormInput,
 } from "@/lib/validations/product";
+import { validateImageFile, MAX_PRODUCT_IMAGES } from "@/lib/uploads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,13 +26,17 @@ import { updateProductAction } from "@/app/(seller)/seller/products/[id]/edit/ac
 type Props = {
   categories: { id: string; name: string }[];
   mode?: "create" | "edit";
-  /** Required (with `id`) when mode is "edit". */
-  initialValues?: Partial<CreateProductFormInput> & { id: string };
+  /** Required (with `id`) when mode is "edit". `images` is the product's currently stored set. */
+  initialValues?: Partial<CreateProductFormInput> & { id: string; images?: string[] };
 };
 
 export function ProductForm({ categories, mode = "create", initialValues }: Props) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
+  const [existingImages, setExistingImages] = useState<string[]>(initialValues?.images ?? []);
+  const [newImages, setNewImages] = useState<File[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     register,
     control,
@@ -43,15 +48,57 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
     defaultValues: initialValues,
   });
 
+  const newImagePreviews = useMemo(() => newImages.map((file) => URL.createObjectURL(file)), [newImages]);
+  useEffect(() => {
+    return () => {
+      newImagePreviews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [newImagePreviews]);
+
+  const remainingSlots = MAX_PRODUCT_IMAGES - existingImages.length - newImages.length;
+
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setImageError(null);
+
+    const selected = Array.from(files);
+    if (selected.length > remainingSlots) {
+      setImageError(`You can add ${remainingSlots} more image(s) (${MAX_PRODUCT_IMAGES} max).`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    for (const file of selected) {
+      const error = validateImageFile(file);
+      if (error) {
+        setImageError(error);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+    }
+    setNewImages((prev) => [...prev, ...selected]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const onSubmit = async (data: CreateProductInput) => {
     setFormError(null);
 
-    // Edit mode always validates/submits against updateProductSchema server-side, which has no
-    // sku field at all — sku is stripped here for tidiness, not as the actual security boundary.
-    const result =
-      mode === "edit" && initialValues
-        ? await updateProductAction(initialValues.id, (({ sku: _sku, ...rest }) => rest)(data))
-        : await createProductAction(data);
+    const formData = new FormData();
+    formData.set("categoryId", data.categoryId);
+    formData.set("name", data.name);
+    formData.set("brand", data.brand ?? "");
+    formData.set("description", data.description ?? "");
+    formData.set("price", String(data.price));
+    formData.set("stockQty", String(data.stockQty));
+    existingImages.forEach((url) => formData.append("existingImages", url));
+    newImages.forEach((file) => formData.append("images", file));
+
+    let result;
+    if (mode === "edit" && initialValues) {
+      result = await updateProductAction(initialValues.id, formData);
+    } else {
+      formData.set("sku", data.sku);
+      result = await createProductAction(formData);
+    }
 
     if (result.ok) {
       router.push("/seller");
@@ -127,9 +174,54 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="imageUrl">Image URL (optional)</Label>
-        <Input id="imageUrl" aria-invalid={!!errors.imageUrl} {...register("imageUrl")} />
-        {errors.imageUrl && <p className="text-sm text-destructive">{errors.imageUrl.message}</p>}
+        <Label htmlFor="images">Images (optional, up to {MAX_PRODUCT_IMAGES})</Label>
+        {(existingImages.length > 0 || newImages.length > 0) && (
+          <div className="flex flex-wrap gap-3">
+            {existingImages.map((url) => (
+              <div key={url} className="flex flex-col items-center gap-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={url} alt="" className="h-20 w-20 rounded-md border border-border object-cover" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExistingImages((prev) => prev.filter((existing) => existing !== url))}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            {newImages.map((file, index) => (
+              <div key={`${file.name}-${index}`} className="flex flex-col items-center gap-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={newImagePreviews[index]}
+                  alt=""
+                  className="h-20 w-20 rounded-md border border-border object-cover"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNewImages((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+        {remainingSlots > 0 && (
+          <Input
+            id="images"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            ref={fileInputRef}
+            onChange={(e) => handleFilesSelected(e.target.files)}
+          />
+        )}
+        {imageError && <p className="text-sm text-destructive">{imageError}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

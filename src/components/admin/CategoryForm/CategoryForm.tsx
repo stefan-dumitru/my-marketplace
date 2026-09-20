@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import {
   type CategoryInput,
   type CategoryFormInput,
 } from "@/lib/validations/category";
+import { validateImageFile } from "@/lib/uploads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,12 +26,16 @@ type Props = {
   categories: { id: string; name: string }[];
   mode?: "create" | "edit";
   /** Required (with `id`) when mode is "edit". Own id is excluded from the parent picker. */
-  initialValues?: Partial<CategoryFormInput> & { id: string };
+  initialValues?: Partial<CategoryFormInput> & { id: string; imageUrl?: string | null };
 };
 
 export function CategoryForm({ categories, mode = "create", initialValues }: Props) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(initialValues?.imageUrl ?? null);
+  const [newImageFile, setNewImageFile] = useState<File | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     register,
     control,
@@ -44,13 +49,44 @@ export function CategoryForm({ categories, mode = "create", initialValues }: Pro
 
   const parentOptions = categories.filter((c) => c.id !== initialValues?.id);
 
+  const newImagePreview = newImageFile ? URL.createObjectURL(newImageFile) : null;
+  useEffect(() => {
+    return () => {
+      if (newImagePreview) URL.revokeObjectURL(newImagePreview);
+    };
+  }, [newImagePreview]);
+
+  const handleImageSelected = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setImageError(null);
+    const error = validateImageFile(file);
+    if (error) {
+      setImageError(error);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setNewImageFile(file);
+  };
+
   const onSubmit = async (data: CategoryInput) => {
     setFormError(null);
 
+    const formData = new FormData();
+    formData.set("name", data.name);
+    formData.set("parentId", data.parentId ?? "");
+    formData.set("isActive", String(data.isActive));
+    formData.set("defaultCommissionRate", String(data.defaultCommissionRate));
+    if (newImageFile) {
+      formData.set("image", newImageFile);
+    } else if (existingImageUrl) {
+      formData.set("existingImage", existingImageUrl);
+    }
+
     const result =
       mode === "edit" && initialValues
-        ? await updateCategoryAction(initialValues.id, data)
-        : await createCategoryAction(data);
+        ? await updateCategoryAction(initialValues.id, formData)
+        : await createCategoryAction(formData);
 
     if (result.ok) {
       router.push("/admin/categories");
@@ -104,9 +140,38 @@ export function CategoryForm({ categories, mode = "create", initialValues }: Pro
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="imageUrl">Image URL (optional)</Label>
-        <Input id="imageUrl" aria-invalid={!!errors.imageUrl} {...register("imageUrl")} />
-        {errors.imageUrl && <p className="text-sm text-destructive">{errors.imageUrl.message}</p>}
+        <Label htmlFor="image">Image (optional)</Label>
+        {(existingImageUrl || newImagePreview) && (
+          <div className="flex flex-col items-center gap-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={newImagePreview ?? existingImageUrl ?? undefined}
+              alt=""
+              className="h-20 w-20 rounded-md border border-border object-cover"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setExistingImageUrl(null);
+                setNewImageFile(null);
+              }}
+            >
+              Remove
+            </Button>
+          </div>
+        )}
+        {!existingImageUrl && !newImageFile && (
+          <Input
+            id="image"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            ref={fileInputRef}
+            onChange={(e) => handleImageSelected(e.target.files)}
+          />
+        )}
+        {imageError && <p className="text-sm text-destructive">{imageError}</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">

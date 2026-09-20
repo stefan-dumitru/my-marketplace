@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,6 +8,7 @@ import {
   sellerApplicationSchema,
   type SellerApplicationInput,
 } from "@/lib/validations/seller";
+import { validateImageFile } from "@/lib/uploads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,9 @@ import { applySellerAction } from "@/app/(storefront)/sell/actions";
 export function SellerApplicationForm() {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     register,
     handleSubmit,
@@ -23,9 +27,36 @@ export function SellerApplicationForm() {
     formState: { errors, isSubmitting },
   } = useForm<SellerApplicationInput>({ resolver: zodResolver(sellerApplicationSchema) });
 
+  const logoPreview = logoFile ? URL.createObjectURL(logoFile) : null;
+  useEffect(() => {
+    return () => {
+      if (logoPreview) URL.revokeObjectURL(logoPreview);
+    };
+  }, [logoPreview]);
+
+  const handleLogoSelected = (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setLogoError(null);
+    const error = validateImageFile(file);
+    if (error) {
+      setLogoError(error);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setLogoFile(file);
+  };
+
   const onSubmit = async (data: SellerApplicationInput) => {
     setFormError(null);
-    const result = await applySellerAction(data);
+
+    const formData = new FormData();
+    formData.set("storeName", data.storeName);
+    formData.set("description", data.description ?? "");
+    formData.set("businessRegistrationNumber", data.businessRegistrationNumber);
+    if (logoFile) formData.set("logo", logoFile);
+
+    const result = await applySellerAction(formData);
 
     if (result.ok) {
       router.refresh();
@@ -76,9 +107,26 @@ export function SellerApplicationForm() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="logoUrl">Logo image URL (optional)</Label>
-        <Input id="logoUrl" aria-invalid={!!errors.logoUrl} {...register("logoUrl")} />
-        {errors.logoUrl && <p className="text-sm text-destructive">{errors.logoUrl.message}</p>}
+        <Label htmlFor="logo">Store logo (optional)</Label>
+        {logoPreview && (
+          <div className="flex flex-col items-center gap-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logoPreview} alt="" className="h-20 w-20 rounded-md border border-border object-cover" />
+            <Button type="button" variant="outline" size="sm" onClick={() => setLogoFile(null)}>
+              Remove
+            </Button>
+          </div>
+        )}
+        {!logoFile && (
+          <Input
+            id="logo"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            ref={fileInputRef}
+            onChange={(e) => handleLogoSelected(e.target.files)}
+          />
+        )}
+        {logoError && <p className="text-sm text-destructive">{logoError}</p>}
       </div>
 
       <Button type="submit" disabled={isSubmitting} className="mt-2">

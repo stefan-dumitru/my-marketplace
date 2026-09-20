@@ -47,7 +47,8 @@ async function uniqueStoreSlug(storeName: string): Promise<string> {
 
 export async function applyForSellerAccount(
   userId: string,
-  input: SellerApplicationInput
+  input: SellerApplicationInput,
+  logoUrl: string | null
 ): Promise<ApplyResult> {
   const parsed = sellerApplicationSchema.safeParse(input);
   if (!parsed.success) {
@@ -65,7 +66,7 @@ export async function applyForSellerAccount(
     return { ok: false, formError: messages[existing.status] ?? "You already have a seller profile." };
   }
 
-  const { storeName, description, businessRegistrationNumber, logoUrl } = parsed.data;
+  const { storeName, description, businessRegistrationNumber } = parsed.data;
   const storeSlug = await uniqueStoreSlug(storeName);
 
   await createSellerApplication({

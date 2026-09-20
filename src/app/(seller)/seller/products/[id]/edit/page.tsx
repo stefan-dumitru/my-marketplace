@@ -37,7 +37,7 @@ export default async function EditProductPage({ params }: Props) {
           description: product.description ?? "",
           brand: product.brand ?? "",
           sku: product.sku,
-          imageUrl: product.images[0] ?? "",
+          images: product.images,
           price: variant ? variant.price.toString() : "0",
           stockQty: variant ? variant.stockQty.toString() : "0",
         }}

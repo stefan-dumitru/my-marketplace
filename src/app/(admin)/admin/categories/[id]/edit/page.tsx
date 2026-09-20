@@ -25,7 +25,7 @@ export default async function EditCategoryPage({ params }: Props) {
           id: category.id,
           name: category.name,
           parentId: category.parentId ?? "",
-          imageUrl: category.imageUrl ?? "",
+          imageUrl: category.imageUrl,
           isActive: category.isActive,
           defaultCommissionRate: category.defaultCommissionRate.toString(),
         }}

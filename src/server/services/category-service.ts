@@ -9,6 +9,7 @@ import {
 } from "@/server/data/categories";
 import { slugify } from "@/lib/slug";
 import { createAuditLog } from "@/server/data/audit-log";
+import { deleteImageIfManaged } from "@/server/services/upload-service";
 
 export type CreateCategoryResult =
   | { ok: true }
@@ -38,12 +39,15 @@ export function getCategoryForAdmin(id: string) {
   return getCategoryById(id);
 }
 
-export async function createCategoryForAdmin(input: CategoryInput): Promise<CreateCategoryResult> {
+export async function createCategoryForAdmin(
+  input: CategoryInput,
+  imageUrl: string | null
+): Promise<CreateCategoryResult> {
   const parsed = categorySchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
   }
-  const { name, parentId, imageUrl, isActive, defaultCommissionRate } = parsed.data;
+  const { name, parentId, isActive, defaultCommissionRate } = parsed.data;
 
   const slug = await uniqueCategorySlug(name);
 
@@ -51,7 +55,7 @@ export async function createCategoryForAdmin(input: CategoryInput): Promise<Crea
     name,
     slug,
     parentId: parentId || null,
-    imageUrl: imageUrl || null,
+    imageUrl,
     isActive,
     defaultCommissionRate,
   });
@@ -62,13 +66,14 @@ export async function createCategoryForAdmin(input: CategoryInput): Promise<Crea
 export async function updateCategoryForAdmin(
   id: string,
   input: CategoryInput,
-  actorUserId: string
+  actorUserId: string,
+  imageUrl: string | null
 ): Promise<UpdateCategoryResult> {
   const parsed = categorySchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
   }
-  const { name, parentId, imageUrl, isActive, defaultCommissionRate } = parsed.data;
+  const { name, parentId, isActive, defaultCommissionRate } = parsed.data;
 
   // A category can never be its own parent — checked here since the data-access layer's
   // verify-then-update only confirms existence, not this business rule.
@@ -81,7 +86,7 @@ export async function updateCategoryForAdmin(
   const updated = await updateCategory(id, {
     name,
     parentId: parentId || null,
-    imageUrl: imageUrl || null,
+    imageUrl,
     isActive,
     defaultCommissionRate,
   });
@@ -103,6 +108,11 @@ export async function updateCategoryForAdmin(
       beforeValue: { defaultCommissionRate: oldRate },
       afterValue: { defaultCommissionRate: newRate },
     });
+  }
+
+  // Best-effort: delete the old image if it was replaced or removed. Never blocks the save.
+  if (before?.imageUrl && before.imageUrl !== imageUrl) {
+    await deleteImageIfManaged(before.imageUrl);
   }
 
   return { ok: true };

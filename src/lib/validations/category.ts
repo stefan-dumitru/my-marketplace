@@ -1,9 +1,10 @@
 import { z } from "zod";
 
+// The image is deliberately not part of this schema — it arrives as a `File` via FormData and is
+// validated/uploaded by upload-service.ts, not Zod (see CategoryForm + the create/update actions).
 export const categorySchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters.").max(120),
   parentId: z.string().optional().or(z.literal("")),
-  imageUrl: z.string().trim().url("Enter a valid image URL.").optional().or(z.literal("")),
   isActive: z.boolean(),
   defaultCommissionRate: z.coerce
     .number()

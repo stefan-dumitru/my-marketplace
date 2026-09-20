@@ -21,6 +21,7 @@ import {
 import { createAuditLog } from "@/server/data/audit-log";
 import { slugify } from "@/lib/slug";
 import { splitPage } from "@/lib/pagination";
+import { deleteImageIfManaged } from "@/server/services/upload-service";
 
 export type CreateProductResult =
   | { ok: true }
@@ -46,13 +47,14 @@ export async function uniqueProductSlug(name: string): Promise<string> {
 
 export async function createProduct(
   sellerId: string,
-  input: CreateProductInput
+  input: CreateProductInput,
+  images: string[]
 ): Promise<CreateProductResult> {
   const parsed = createProductSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
   }
-  const { categoryId, name, description, brand, sku, imageUrl, price, stockQty } = parsed.data;
+  const { categoryId, name, description, brand, sku, price, stockQty } = parsed.data;
 
   const existingSku = await getProductBySellerAndSku(sellerId, sku);
   if (existingSku) {
@@ -68,7 +70,7 @@ export async function createProduct(
     slug,
     description: description || undefined,
     brand: brand || undefined,
-    images: imageUrl ? [imageUrl] : [],
+    images,
     price,
     stockQty,
   });
@@ -83,20 +85,23 @@ export function getProductForSellerEdit(sellerId: string, productId: string) {
 export async function updateProduct(
   sellerId: string,
   productId: string,
-  input: UpdateProductInput
+  input: UpdateProductInput,
+  images: string[]
 ): Promise<UpdateProductResult> {
   const parsed = updateProductSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
   }
-  const { categoryId, name, description, brand, imageUrl, price, stockQty } = parsed.data;
+  const { categoryId, name, description, brand, price, stockQty } = parsed.data;
+
+  const before = await getProductByIdForSeller(sellerId, productId);
 
   const updated = await updateProductForSeller(sellerId, productId, {
     categoryId,
     name,
     description: description || undefined,
     brand: brand || undefined,
-    images: imageUrl ? [imageUrl] : [],
+    images,
     price,
     stockQty,
   });
@@ -104,6 +109,11 @@ export async function updateProduct(
   if (!updated) {
     return { ok: false, formError: "Product not found." };
   }
+
+  // Best-effort: delete any image the seller dropped from the set. Never blocks the save.
+  const droppedImages = (before?.images ?? []).filter((url) => !images.includes(url));
+  await Promise.all(droppedImages.map((url) => deleteImageIfManaged(url)));
+
   return { ok: true };
 }
 
