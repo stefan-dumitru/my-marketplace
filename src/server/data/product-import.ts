@@ -5,8 +5,17 @@ import type { ImportMode, ImportBatchStatus, ImportRecordAction } from "@/genera
 
 export function createImportBatch(sellerId: string, mode: ImportMode, totalRows: number) {
   return prisma.importBatch.create({
-    data: { sellerId, mode, totalRows, status: "processing" },
+    data: { sellerId, mode, totalRows, status: "pending" },
   });
+}
+
+export function markImportBatchProcessing(batchId: string) {
+  return prisma.importBatch.update({ where: { id: batchId }, data: { status: "processing" } });
+}
+
+/** Unscoped by seller — used by the Inngest job handler, which has no request-scoped session. */
+export function getImportBatchById(batchId: string) {
+  return prisma.importBatch.findUnique({ where: { id: batchId } });
 }
 
 export function completeImportBatch(

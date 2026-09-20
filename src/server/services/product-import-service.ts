@@ -1,6 +1,7 @@
 import "server-only";
 import { parse } from "csv-parse/sync";
 import { sendEmail } from "@/lib/email";
+import { inngest } from "@/lib/inngest";
 import { createAuditLog } from "@/server/data/audit-log";
 import { notifyUser } from "@/server/services/notification-service";
 import { getCategoryBySlug } from "@/server/data/categories";
@@ -11,6 +12,7 @@ import {
 } from "@/server/data/products";
 import {
   createImportBatch,
+  markImportBatchProcessing,
   completeImportBatch,
   insertImportBatchRecords,
   getImportBatchForSeller,
@@ -33,6 +35,13 @@ export type ImportProductsResult =
 
 const MAX_ROWS = 100;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
+// Async path (>= 100 rows) ships the parsed rows directly in the Inngest event payload rather
+// than persisting to blob storage — that keeps this increment scoped to "stand up Inngest," not
+// "also stand up Vercel Blob." Inngest's event payload ceiling is ~512KB; this leaves headroom
+// for JSON-encoding overhead. Lifting this to the spec's full ~10,000-row range needs blob
+// storage — a separate future increment, not bundled into wiring up the job runner for the first
+// time (same scoping call this codebase already made when CSV import itself was first built).
+const MAX_ASYNC_BYTES = 400 * 1024;
 
 type PendingRecord = {
   importBatchId: string;
@@ -68,12 +77,49 @@ export async function importProducts(
   if (rawRows.length === 0) {
     return { ok: false, formError: "The file has no data rows." };
   }
-  if (rawRows.length > MAX_ROWS) {
+
+  if (rawRows.length < MAX_ROWS) {
+    const batch = await createImportBatch(sellerId, mode, rawRows.length);
+    return processImportRows(batch, sellerId, actorUserId, sellerEmail, mode, rawRows);
+  }
+
+  // >= 100 rows: per performance.md, this runs as a background job instead of inline. The
+  // parsed rows travel in the event payload (see MAX_ASYNC_BYTES's comment for why that's
+  // capped rather than unlimited) — Buffer.byteLength on the raw text is a reasonable proxy for
+  // the payload's eventual JSON size.
+  if (Buffer.byteLength(csvText, "utf8") > MAX_ASYNC_BYTES) {
     return {
       ok: false,
-      formError: `Files with more than ${MAX_ROWS} rows aren't supported yet — please split into smaller files.`,
+      formError: "This file is too large for background processing yet — please split into smaller files.",
     };
   }
+
+  const batch = await createImportBatch(sellerId, mode, rawRows.length);
+  await inngest.send({
+    name: "product-import/requested",
+    data: { batchId: batch.id, sellerId, actorUserId, sellerEmail, mode, rows: rawRows },
+  });
+  return { ok: true, batchId: batch.id };
+}
+
+/**
+ * The actual row-processing work, shared by both the synchronous (<100 rows) and background-job
+ * (>=100 rows) paths — identical validation/bookkeeping/notifications either way, differing only
+ * in *when* it runs. Idempotent: a batch already `completed`/`failed` is a no-op, since Inngest
+ * guarantees at-least-once delivery and this must tolerate a redelivered event safely.
+ */
+export async function processImportRows(
+  batch: { id: string; status: string },
+  sellerId: string,
+  actorUserId: string,
+  sellerEmail: string,
+  mode: ImportMode,
+  rawRows: Record<string, string>[]
+): Promise<ImportProductsResult> {
+  if (batch.status === "completed" || batch.status === "failed") {
+    return { ok: true, batchId: batch.id };
+  }
+  await markImportBatchProcessing(batch.id);
 
   // Last-occurrence-wins: find which row index "wins" per SKU, and record every earlier
   // duplicate as skipped/superseded up front (data-model.md's explicit rule).
@@ -83,7 +129,6 @@ export async function importProducts(
     if (sku) winningIndexBySku.set(sku, index);
   });
 
-  const batch = await createImportBatch(sellerId, mode, rawRows.length);
   const records: PendingRecord[] = [];
   let succeededRows = 0;
   let failedRows = 0;

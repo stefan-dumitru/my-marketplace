@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { getSellerContext } from "@/server/services/seller-service";
 import { getImportBatch } from "@/server/services/product-import-service";
 import { Card } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 
 const MODE_LABEL: Record<string, string> = {
   add_only: "Add only",
@@ -59,7 +61,16 @@ export default async function ImportBatchDetailPage({ params }: Props) {
       </Card>
 
       {batch.records.length === 0 ? (
-        <Card className="p-6 text-sm text-muted-foreground">No rows recorded.</Card>
+        batch.status === "pending" || batch.status === "processing" ? (
+          <Card className="flex flex-col items-start gap-3 p-6 text-sm text-muted-foreground">
+            <p>Your import is still processing — this can take a moment for larger files.</p>
+            <Link href={`/seller/products/import/${batchId}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+              Refresh
+            </Link>
+          </Card>
+        ) : (
+          <Card className="p-6 text-sm text-muted-foreground">No rows recorded.</Card>
+        )
       ) : (
         <div className="flex flex-col gap-2">
           {batch.records.map((record) => (
