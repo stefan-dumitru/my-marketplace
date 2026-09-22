@@ -2,6 +2,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { auth } from "@/lib/auth";
 import { getOrderByIdForBuyer } from "@/server/data/orders";
 import { InvoiceDocument } from "@/components/invoice/InvoiceDocument";
+import { checkRateLimit } from "@/server/data/rate-limit";
 
 type Props = {
   params: Promise<{ orderId: string }>;
@@ -10,6 +11,14 @@ type Props = {
 export async function GET(_req: Request, { params }: Props) {
   const session = await auth();
   if (!session) return new Response("Unauthorized", { status: 401 });
+
+  // Real, repeatable CPU cost per request (PDF render) — worth bounding even though it's
+  // authenticated and self-scoped.
+  const rateLimit = await checkRateLimit(`invoice-download:${session.user.id}`, {
+    limit: 20,
+    windowSeconds: 600,
+  });
+  if (!rateLimit.allowed) return new Response("Too many requests", { status: 429 });
 
   const { orderId } = await params;
   const order = await getOrderByIdForBuyer(session.user.id, orderId);

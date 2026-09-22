@@ -9,11 +9,21 @@ import {
   type ImportProductsResult,
 } from "@/server/services/product-import-service";
 import { importModeSchema } from "@/lib/validations/product-import";
+import { checkRateLimit } from "@/server/data/rate-limit";
 
 export async function importProductsAction(formData: FormData): Promise<ImportProductsResult> {
   const context = await getSellerContext();
   if (!context) redirect("/auth/login?callbackUrl=/seller/products/import");
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
+
+  // Large batches enqueue an Inngest background job and send a completion email.
+  const rateLimit = await checkRateLimit(`product-import:${context.profile.id}`, {
+    limit: 10,
+    windowSeconds: 600,
+  });
+  if (!rateLimit.allowed) {
+    return { ok: false, formError: "Too many attempts. Please try again shortly." };
+  }
 
   const modeParsed = importModeSchema.safeParse(formData.get("mode"));
   if (!modeParsed.success) {

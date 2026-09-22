@@ -12,6 +12,7 @@ import {
   type ShipOrderResult,
 } from "@/server/services/seller-order-service";
 import { getSellerContext } from "@/server/services/seller-service";
+import { checkRateLimit } from "@/server/data/rate-limit";
 import type { ShipOrderInput } from "@/lib/validations/seller-order";
 
 export async function markShippedAction(
@@ -46,6 +47,16 @@ export async function cancelSellerOrderAction(sellerOrderId: string): Promise<Ca
   if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
 
+  // Shared with resolveReturnRequestAction below — both call stripe.refunds.create, a real
+  // financial operation.
+  const rateLimit = await checkRateLimit(`seller-order-mutation:${context.profile.id}`, {
+    limit: 30,
+    windowSeconds: 600,
+  });
+  if (!rateLimit.allowed) {
+    return { ok: false, formError: "Too many attempts. Please try again shortly." };
+  }
+
   const result = await cancelSellerOrder(context.profile.id, sellerOrderId, context.session.user.id);
   revalidatePath("/seller/orders");
   revalidatePath(`/seller/orders/${sellerOrderId}`);
@@ -59,6 +70,15 @@ export async function resolveReturnRequestAction(
   const context = await getSellerContext();
   if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
+
+  // Shared with cancelSellerOrderAction above — see its comment.
+  const rateLimit = await checkRateLimit(`seller-order-mutation:${context.profile.id}`, {
+    limit: 30,
+    windowSeconds: 600,
+  });
+  if (!rateLimit.allowed) {
+    return { ok: false, formError: "Too many attempts. Please try again shortly." };
+  }
 
   const result = await resolveReturn(context.profile.id, sellerOrderId, context.session.user.id, decision);
   revalidatePath("/seller/orders");

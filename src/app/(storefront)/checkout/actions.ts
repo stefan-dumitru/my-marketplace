@@ -47,6 +47,13 @@ export async function retryOrderPaymentAction(orderId: string) {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/orders");
 
+  // Own key, separate from checkout's — creates a new Stripe Checkout Session per call, same
+  // cost shape as createCheckoutSessionAction above.
+  const rateLimit = await checkRateLimit(`retry-payment:${session.user.id}`, { limit: 10, windowSeconds: 600 });
+  if (!rateLimit.allowed) {
+    return { ok: false as const, formError: "Too many attempts. Please try again shortly." };
+  }
+
   const result = await retryOrderPayment(session.user.id, orderId);
   if (result.ok) {
     redirect(result.redirectUrl);
