@@ -20,7 +20,7 @@ export default async function EditCategoryPage({ params }: Props) {
       <h1 className="text-2xl font-semibold">Edit category</h1>
       <CategoryForm
         mode="edit"
-        categories={categories}
+        categories={categories.map((c) => ({ id: c.id, name: c.name }))}
         initialValues={{
           id: category.id,
           name: category.name,

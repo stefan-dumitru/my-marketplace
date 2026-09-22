@@ -49,7 +49,16 @@ export default async function ProductDetailPage({ params }: Props) {
           {product.description && <p className="text-sm">{product.description}</p>}
 
           {product.variants.length > 0 && (
-            <VariantPicker slug={slug} variants={product.variants} loggedIn={!!session} />
+            <VariantPicker
+              slug={slug}
+              variants={product.variants.map((v) => ({
+                id: v.id,
+                attributes: v.attributes,
+                price: Number(v.price),
+                stockQty: v.stockQty,
+              }))}
+              loggedIn={!!session}
+            />
           )}
         </div>
       </div>

@@ -29,7 +29,7 @@ export default async function EditProductPage({ params }: Props) {
       <h1 className="text-2xl font-semibold">Edit product</h1>
       <ProductForm
         mode="edit"
-        categories={categories}
+        categories={categories.map((c) => ({ id: c.id, name: c.name }))}
         initialValues={{
           id: product.id,
           categoryId: product.categoryId,

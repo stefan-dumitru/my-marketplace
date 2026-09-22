@@ -62,7 +62,17 @@ export default async function SellerDashboardPage({ searchParams }: Props) {
         <>
           <div className="flex flex-col gap-3">
             {products.map((product) => (
-              <ProductRow key={product.id} product={product} />
+              <ProductRow
+                key={product.id}
+                product={{
+                  id: product.id,
+                  name: product.name,
+                  sku: product.sku,
+                  status: product.status,
+                  category: { name: product.category.name },
+                  variants: product.variants.map((v) => ({ price: Number(v.price), stockQty: v.stockQty })),
+                }}
+              />
             ))}
           </div>
           <Pagination page={page} hasNextPage={hasNextPage} basePath="/seller" />

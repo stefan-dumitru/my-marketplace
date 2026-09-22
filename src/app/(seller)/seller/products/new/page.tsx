@@ -7,7 +7,7 @@ export default async function NewProductPage() {
   return (
     <div className="flex max-w-lg flex-col gap-6">
       <h1 className="text-2xl font-semibold">Add a product</h1>
-      <ProductForm categories={categories} />
+      <ProductForm categories={categories.map((c) => ({ id: c.id, name: c.name }))} />
     </div>
   );
 }

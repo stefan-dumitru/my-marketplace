@@ -75,7 +75,17 @@ export default async function AdminSellersPage({ searchParams }: Props) {
           <>
             <div className="flex flex-col gap-3">
               {approvedSellers.map((seller) => (
-                <SellerOversightRow key={seller.id} seller={seller} variant="approved" />
+                <SellerOversightRow
+                  key={seller.id}
+                  seller={{
+                    id: seller.id,
+                    storeName: seller.storeName,
+                    commissionRateOverride:
+                      seller.commissionRateOverride == null ? null : Number(seller.commissionRateOverride),
+                    user: seller.user,
+                  }}
+                  variant="approved"
+                />
               ))}
             </div>
             <Pagination
@@ -98,7 +108,17 @@ export default async function AdminSellersPage({ searchParams }: Props) {
           <>
             <div className="flex flex-col gap-3">
               {suspendedSellers.map((seller) => (
-                <SellerOversightRow key={seller.id} seller={seller} variant="suspended" />
+                <SellerOversightRow
+                  key={seller.id}
+                  seller={{
+                    id: seller.id,
+                    storeName: seller.storeName,
+                    commissionRateOverride:
+                      seller.commissionRateOverride == null ? null : Number(seller.commissionRateOverride),
+                    user: seller.user,
+                  }}
+                  variant="suspended"
+                />
               ))}
             </div>
             <Pagination

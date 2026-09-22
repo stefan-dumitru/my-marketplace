@@ -22,7 +22,17 @@ export default async function AdminProductsPage({ searchParams }: Props) {
         <>
           <div className="flex flex-col gap-3">
             {products.map((product) => (
-              <ProductModerationRow key={product.id} product={product} />
+              <ProductModerationRow
+                key={product.id}
+                product={{
+                  id: product.id,
+                  name: product.name,
+                  sku: product.sku,
+                  seller: { storeName: product.seller.storeName },
+                  category: { name: product.category.name },
+                  variants: product.variants.map((v) => ({ price: Number(v.price) })),
+                }}
+              />
             ))}
           </div>
           <Pagination page={page} hasNextPage={hasNextPage} basePath="/admin/products" />

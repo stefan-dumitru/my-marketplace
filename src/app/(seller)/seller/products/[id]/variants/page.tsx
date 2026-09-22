@@ -40,7 +40,17 @@ export default async function ProductVariantsPage({ params }: Props) {
       ) : (
         <div className="flex flex-col gap-3">
           {variants.map((variant) => (
-            <VariantRow key={variant.id} productId={id} variant={variant} />
+            <VariantRow
+              key={variant.id}
+              productId={id}
+              variant={{
+                id: variant.id,
+                sku: variant.sku,
+                attributes: variant.attributes,
+                price: Number(variant.price),
+                stockQty: variant.stockQty,
+              }}
+            />
           ))}
         </div>
       )}

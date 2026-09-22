@@ -24,13 +24,12 @@ export async function getCartWithItems(userId: string) {
         include: {
           product: {
             include: {
-              category: { select: { name: true, defaultCommissionRate: true } },
+              category: { select: { name: true } },
               seller: {
                 select: {
                   id: true,
                   storeName: true,
                   storeSlug: true,
-                  commissionRateOverride: true,
                 },
               },
             },

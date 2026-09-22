@@ -68,7 +68,22 @@ export default async function CartPage({ searchParams }: Props) {
                 </p>
                 <div className="divide-y">
                   {seller.items.map((item) => (
-                    <CartItemRow key={item.id} item={item} />
+                    <CartItemRow
+                      key={item.id}
+                      item={{
+                        id: item.id,
+                        quantity: item.quantity,
+                        productVariant: {
+                          price: Number(item.productVariant.price),
+                          stockQty: item.productVariant.stockQty,
+                          product: {
+                            name: item.productVariant.product.name,
+                            slug: item.productVariant.product.slug,
+                            images: item.productVariant.product.images,
+                          },
+                        },
+                      }}
+                    />
                   ))}
                 </div>
                 <p className="mt-2 text-right text-sm text-muted-foreground">

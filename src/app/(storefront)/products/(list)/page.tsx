@@ -32,7 +32,11 @@ export default async function ProductsPage({ searchParams }: Props) {
     <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <h1 className="mb-6 text-2xl font-semibold">Products</h1>
 
-      <ProductFilterForm categories={categories} q={q} category={category} />
+      <ProductFilterForm
+        categories={categories.map((c) => ({ id: c.id, name: c.name, slug: c.slug }))}
+        q={q}
+        category={category}
+      />
 
       {products.length === 0 ? (
         hasFilters ? (
