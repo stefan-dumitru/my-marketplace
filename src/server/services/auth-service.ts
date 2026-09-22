@@ -6,7 +6,9 @@ import { createVerificationToken, consumeVerificationToken } from "@/server/data
 import { sendEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
-const BCRYPT_COST = 12;
+// Exported so account-service.ts hashes the throwaway password it writes during GDPR
+// anonymization at the same cost factor — one source of truth for the policy (security.md).
+export const BCRYPT_COST = 12;
 
 export type RegisterResult =
   | { ok: true }

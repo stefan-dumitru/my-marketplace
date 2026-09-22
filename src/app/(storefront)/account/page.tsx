@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { DeleteAccountCard } from "@/components/account/DeleteAccountCard";
 import { formatPrice } from "@/lib/format";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -137,6 +138,9 @@ export default async function AccountPage() {
         </Link>
       </div>
       <LogoutButton />
+
+      {/* Sellers are routed to support instead — the action refuses and explains why. */}
+      <DeleteAccountCard email={session.user.email ?? ""} />
     </div>
   );
 }

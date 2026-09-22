@@ -22,6 +22,7 @@ const ACTION_LABEL: Record<string, string> = {
   seller_order_refunded: "Order refunded",
   payment_succeeded: "Payment succeeded",
   payment_failed: "Payment failed",
+  user_anonymized: "Account deleted (GDPR)",
 };
 
 type Props = {

@@ -36,6 +36,11 @@ model User {
   status          UserStatus @default(active)
   emailVerifiedAt DateTime?
   suspendedAt     DateTime?
+  // Set when the user exercises their GDPR deletion right: the row is kept (Order/Review FKs
+  // depend on it) but every PII field on it is overwritten — see data-model.md > User > Lifecycle
+  // and users.ts's anonymizeUserById. Deliberately a timestamp rather than a UserStatus value:
+  // both auth checks test `status === "suspended"` exactly, so a new enum value would fail open.
+  anonymizedAt    DateTime?
   // Bump to force-invalidate every outstanding JWT for this user (logout-everywhere, suspension,
   // role/privilege change) — see src/lib/auth.ts's jwt callback.
   sessionVersion  Int        @default(0)
