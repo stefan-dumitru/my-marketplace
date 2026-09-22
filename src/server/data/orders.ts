@@ -206,3 +206,23 @@ export function getOrderByIdForBuyer(buyerId: string, orderId: string) {
     include: ORDER_INCLUDE,
   });
 }
+
+/** Counts/sums only "paid" orders — pending/failed ones aren't real purchases yet. */
+export async function getBuyerOrderStats(buyerId: string) {
+  const result = await prisma.order.aggregate({
+    where: { buyerId, status: "paid" },
+    _count: true,
+    _sum: { totalAmount: true },
+  });
+  return { orderCount: result._count, totalSpent: result._sum.totalAmount ?? 0 };
+}
+
+/** Lean projection for an account-page preview — the full ORDER_INCLUDE is overkill here. */
+export function getRecentOrdersForBuyer(buyerId: string, limit: number) {
+  return prisma.order.findMany({
+    where: { buyerId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { id: true, orderNumber: true, status: true, totalAmount: true, createdAt: true },
+  });
+}

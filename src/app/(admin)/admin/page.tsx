@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { getAdminDashboard } from "@/server/services/dashboard-service";
 import { StatTile } from "@/components/dashboard/StatTile";
+import { buttonVariants } from "@/components/ui/button";
 import { formatPrice } from "@/lib/format";
 
 export default async function AdminHomePage() {
@@ -7,7 +9,12 @@ export default async function AdminHomePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <Link href="/" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Back to marketplace
+        </Link>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile label="GMV this month" value={formatPrice(stats.gmvThisMonth)} />
