@@ -130,8 +130,39 @@ model SellerProfile {
   products      Product[]
   sellerOrders  SellerOrder[]
   importBatches ImportBatch[]
+  payouts       Payout[]
 
   @@map("seller_profiles")
+}
+
+enum PayoutStatus {
+  pending
+  paid
+  failed
+}
+
+/**
+ * One Stripe Connect transfer per seller per batch run — not per SellerOrder. `periodStart`/
+ * `periodEnd` are the min/max `deliveredAt` among the orders this payout covers, so "which orders
+ * are in this payout" is always re-derivable by date range + seller rather than needing a join
+ * table (see data-model.md > Payout). A given SellerOrder's payout amount is included in exactly
+ * one Payout — enforced by the release job only ever selecting orders with `payoutAt: null`.
+ */
+model Payout {
+  id               String       @id @default(cuid())
+  sellerId         String
+  periodStart      DateTime
+  periodEnd        DateTime
+  amount           Decimal      @db.Decimal(10, 2)
+  stripeTransferId String?      @unique
+  status           PayoutStatus @default(pending)
+  paidAt           DateTime?
+  createdAt        DateTime     @default(now())
+
+  seller SellerProfile @relation(fields: [sellerId], references: [id])
+
+  @@index([sellerId])
+  @@map("payouts")
 }
 
 enum ImportMode {
@@ -346,6 +377,9 @@ model SellerOrder {
   // pending" and only redo the Stripe call, not the stock release — see seller-order-service.ts.
   refundedAt       DateTime?
   payoutAt         DateTime?
+  // Legacy: the pre-Payout-model release flow set this per order. No longer written to — a
+  // paid-out order's transfer now lives on the Payout row that covers it (see Payout above);
+  // this column is kept only so historical pre-migration rows aren't lost.
   stripeTransferId String?
 
   order         Order          @relation(fields: [orderId], references: [id])

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { releasePayout } from "@/server/services/payout-service";
+import { inngest } from "@/lib/inngest";
 
 async function requireAdmin() {
   const session = await auth();
@@ -12,9 +12,9 @@ async function requireAdmin() {
   return session.user.id;
 }
 
-export async function releasePayoutAction(sellerOrderId: string) {
+export async function runPayoutBatchAction() {
   const actorUserId = await requireAdmin();
-  const result = await releasePayout(sellerOrderId, actorUserId);
+  await inngest.send({ name: "payouts/release.requested", data: { actorUserId } });
   revalidatePath("/admin/payouts");
-  return result;
+  return { ok: true as const };
 }

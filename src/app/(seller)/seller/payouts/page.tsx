@@ -1,19 +1,32 @@
 import { getSellerContext } from "@/server/services/seller-service";
-import { getSellerOrdersForPayouts } from "@/server/services/seller-order-service";
+import { getPayoutHistoryForSeller } from "@/server/services/payout-service";
 import { reconcileConnectStatus } from "@/server/services/connect-service";
 import { ConnectPayoutsCard } from "@/components/seller/ConnectPayoutsCard";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
+import { Pagination } from "@/components/shared/Pagination";
 import { formatPrice } from "@/lib/format";
+import { parsePage } from "@/lib/pagination";
 
-export default async function SellerPayoutsPage() {
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  paid: "Paid",
+  failed: "Failed",
+};
+
+type Props = {
+  searchParams: Promise<{ page?: string }>;
+};
+
+export default async function SellerPayoutsPage({ searchParams }: Props) {
   // Non-null: the (seller) layout already redirected away any non-approved seller.
   const context = await getSellerContext();
   const profile = context!.profile!;
+  const page = parsePage((await searchParams).page);
 
-  const [payoutsEnabled, sellerOrders] = await Promise.all([
+  const [payoutsEnabled, { payouts, hasNextPage }] = await Promise.all([
     reconcileConnectStatus(profile.id),
-    getSellerOrdersForPayouts(profile.id),
+    getPayoutHistoryForSeller(profile.id, page),
   ]);
 
   const status = !profile.stripeConnectAccountId
@@ -21,8 +34,6 @@ export default async function SellerPayoutsPage() {
     : payoutsEnabled
       ? "enabled"
       : "onboarding_incomplete";
-
-  const deliveredOrders = sellerOrders.filter((so) => so.status === "delivered");
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,22 +48,31 @@ export default async function SellerPayoutsPage() {
             Download CSV
           </a>
         </div>
-        {deliveredOrders.length === 0 ? (
-          <Card className="p-6 text-sm text-muted-foreground">No delivered orders yet.</Card>
+        {payouts.length === 0 ? (
+          <Card className="p-6 text-sm text-muted-foreground">
+            No payouts yet. Delivered orders are held for 14 days before being included in a payout.
+          </Card>
         ) : (
-          <div className="flex flex-col gap-3">
-            {deliveredOrders.map((so) => (
-              <Card key={so.id} className="flex items-center justify-between p-4 text-sm">
-                <div>
-                  <p className="font-medium">{so.order.orderNumber}</p>
-                  <p className="text-muted-foreground">
-                    {so.payoutAt ? `Paid out ${new Date(so.payoutAt).toLocaleDateString("ro-RO")}` : "Pending payout"}
-                  </p>
-                </div>
-                <p className="font-medium">{formatPrice(so.payoutAmount)}</p>
-              </Card>
-            ))}
-          </div>
+          <>
+            <div className="flex flex-col gap-3">
+              {payouts.map((payout) => (
+                <Card key={payout.id} className="flex items-center justify-between p-4 text-sm">
+                  <div>
+                    <p className="font-medium">
+                      {new Date(payout.periodStart).toLocaleDateString("ro-RO")} –{" "}
+                      {new Date(payout.periodEnd).toLocaleDateString("ro-RO")}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {STATUS_LABEL[payout.status] ?? payout.status}
+                      {payout.paidAt ? ` · Paid ${new Date(payout.paidAt).toLocaleDateString("ro-RO")}` : ""}
+                    </p>
+                  </div>
+                  <p className="font-medium">{formatPrice(payout.amount)}</p>
+                </Card>
+              ))}
+            </div>
+            <Pagination page={page} hasNextPage={hasNextPage} basePath="/seller/payouts" />
+          </>
         )}
       </div>
     </div>

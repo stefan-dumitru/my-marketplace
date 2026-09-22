@@ -10,19 +10,19 @@ export async function GET() {
 
   const csv = toCsv(
     rows.map((r) => ({
-      orderNumber: r.order.orderNumber,
-      deliveredAt: r.deliveredAt?.toISOString() ?? "",
-      payoutAmount: r.payoutAmount.toString(),
-      payoutStatus: r.payoutAt ? "Paid" : "Pending",
-      payoutAt: r.payoutAt?.toISOString() ?? "",
+      periodStart: r.periodStart.toISOString(),
+      periodEnd: r.periodEnd.toISOString(),
+      amount: r.amount.toString(),
+      status: r.status,
+      paidAt: r.paidAt?.toISOString() ?? "",
       stripeTransferId: r.stripeTransferId ?? "",
     })),
     [
-      { key: "orderNumber", header: "Order Number" },
-      { key: "deliveredAt", header: "Delivered At" },
-      { key: "payoutAmount", header: "Payout Amount" },
-      { key: "payoutStatus", header: "Payout Status" },
-      { key: "payoutAt", header: "Payout Date" },
+      { key: "periodStart", header: "Period Start" },
+      { key: "periodEnd", header: "Period End" },
+      { key: "amount", header: "Amount" },
+      { key: "status", header: "Status" },
+      { key: "paidAt", header: "Paid At" },
       { key: "stripeTransferId", header: "Stripe Transfer ID" },
     ]
   );

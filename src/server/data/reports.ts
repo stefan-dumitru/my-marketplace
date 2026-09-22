@@ -46,10 +46,9 @@ export async function getSellerSalesSummary(sellerId: string, range: ReportRange
 }
 
 export function getSellerPayoutHistoryRows(sellerId: string) {
-  return prisma.sellerOrder.findMany({
-    where: { sellerId, status: "delivered" },
-    orderBy: { deliveredAt: "desc" },
-    include: { order: { select: { orderNumber: true } } },
+  return prisma.payout.findMany({
+    where: { sellerId },
+    orderBy: { createdAt: "desc" },
   });
 }
 

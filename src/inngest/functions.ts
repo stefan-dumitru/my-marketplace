@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest";
 import { getImportBatchById } from "@/server/data/product-import";
 import { processImportRows } from "@/server/services/product-import-service";
+import { releaseSellerPayouts } from "@/server/services/payout-service";
 import type { ImportMode } from "@/generated/prisma/enums";
 
 export const processProductImportFunction = inngest.createFunction(
@@ -22,5 +23,17 @@ export const processProductImportFunction = inngest.createFunction(
     if (!batch) return { skipped: true, reason: "batch not found" };
 
     return processImportRows(batch, sellerId, actorUserId, sellerEmail, mode, rows);
+  }
+);
+
+// Weekly cron run + an admin-triggerable "run now" event, both calling the same batching logic
+// (see payout-service.ts's releaseSellerPayouts for why it's one transfer per seller per run,
+// not per order). 06:00 UTC every Monday — an arbitrary but reasonable default; nothing in the
+// spec dictates an exact cadence.
+export const releaseSellerPayoutsFunction = inngest.createFunction(
+  { id: "release-seller-payouts", retries: 3, triggers: [{ cron: "0 6 * * 1" }, { event: "payouts/release.requested" }] },
+  async ({ event }) => {
+    const actorUserId = (event?.data as { actorUserId?: string } | undefined)?.actorUserId ?? null;
+    return releaseSellerPayouts(actorUserId);
   }
 );

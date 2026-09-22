@@ -1,47 +1,46 @@
-"use client";
-
-import { useFormStatus } from "react-dom";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/lib/format";
-import { releasePayoutAction } from "@/app/(admin)/admin/payouts/actions";
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  paid: "Paid",
+  failed: "Failed",
+};
 
 type Props = {
-  sellerOrder: {
+  payout: {
     id: string;
-    payoutAmount: unknown;
-    deliveredAt: Date | null;
+    amount: unknown;
+    status: string;
+    periodStart: Date;
+    periodEnd: Date;
+    paidAt: Date | null;
+    stripeTransferId: string | null;
     seller: { storeName: string };
-    order: { orderNumber: string };
   };
 };
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" size="sm" disabled={pending}>
-      {pending ? "Working…" : "Release payout"}
-    </Button>
-  );
-}
-
-export function PayoutRow({ sellerOrder }: Props) {
+// Purely presentational — batches are created only by releaseSellerPayouts (the scheduled/
+// triggerable job), never released one row at a time, so there's no per-row action here anymore.
+export function PayoutRow({ payout }: Props) {
   return (
     <Card className="flex flex-col gap-3 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="font-medium">{sellerOrder.seller.storeName}</p>
-        <p className="text-muted-foreground">{sellerOrder.order.orderNumber}</p>
-        {sellerOrder.deliveredAt && (
-          <p className="text-muted-foreground">
-            Delivered {new Date(sellerOrder.deliveredAt).toLocaleDateString("ro-RO")}
-          </p>
-        )}
+        <p className="font-medium">{payout.seller.storeName}</p>
+        <p className="text-muted-foreground">
+          {new Date(payout.periodStart).toLocaleDateString("ro-RO")} –{" "}
+          {new Date(payout.periodEnd).toLocaleDateString("ro-RO")}
+        </p>
+        <p className="text-muted-foreground">
+          {STATUS_LABEL[payout.status] ?? payout.status}
+          {payout.paidAt ? ` · Paid ${new Date(payout.paidAt).toLocaleDateString("ro-RO")}` : ""}
+        </p>
       </div>
-      <div className="flex items-center gap-3">
-        <p className="font-medium">{formatPrice(sellerOrder.payoutAmount)}</p>
-        <form action={async () => { await releasePayoutAction(sellerOrder.id); }}>
-          <SubmitButton />
-        </form>
+      <div className="text-right">
+        <p className="font-medium">{formatPrice(payout.amount)}</p>
+        {payout.stripeTransferId && (
+          <p className="text-xs text-muted-foreground">{payout.stripeTransferId}</p>
+        )}
       </div>
     </Card>
   );
