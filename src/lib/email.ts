@@ -1,8 +1,9 @@
 import "server-only";
 import { Resend } from "resend";
 import { logger } from "@/lib/logger";
+import { inngest } from "@/lib/inngest";
 
-type SendEmailInput = {
+export type SendEmailInput = {
   to: string;
   subject: string;
   html: string;
@@ -49,4 +50,17 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     { to: input.to, subject: input.subject, text: input.text },
     "[dev email fallback] RESEND_API_KEY not set — logging email instead of sending"
   );
+}
+
+/**
+ * Per operations.md > External Integrations: "if the email provider is down, the underlying
+ * action still completes — the email send is queued and retried via the background job system
+ * rather than blocking or failing the action it's attached to." Every call site that used to call
+ * sendEmail() directly (a single synchronous attempt, best-effort .catch()'d) now enqueues this
+ * event instead — the actual send happens in inngest/functions.ts's sendQueuedEmailFunction,
+ * which gets 3 retries with backoff for free. The enqueue itself is fast/local (Inngest's own
+ * ingest endpoint), so callers can await it without materially adding to request latency.
+ */
+export function queueEmail(input: SendEmailInput) {
+  return inngest.send({ name: "email/send.requested", data: input });
 }

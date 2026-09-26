@@ -1,8 +1,24 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest";
-import { processProductImportFunction, releaseSellerPayoutsFunction } from "@/inngest/functions";
+import {
+  processProductImportFunction,
+  releaseSellerPayoutsFunction,
+  sendQueuedEmailFunction,
+  sendLowStockAlertFunction,
+  purgeAbandonedCartsFunction,
+  purgeOldNotificationsFunction,
+  computeDailySalesRollupFunction,
+} from "@/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [processProductImportFunction, releaseSellerPayoutsFunction],
+  functions: [
+    processProductImportFunction,
+    releaseSellerPayoutsFunction,
+    sendQueuedEmailFunction,
+    sendLowStockAlertFunction,
+    purgeAbandonedCartsFunction,
+    purgeOldNotificationsFunction,
+    computeDailySalesRollupFunction,
+  ],
 });

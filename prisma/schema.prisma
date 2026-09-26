@@ -69,6 +69,7 @@ enum NotificationType {
   seller_suspended
   seller_reinstated
   import_completed
+  low_stock_alert
 }
 
 model Notification {
@@ -136,6 +137,7 @@ model SellerProfile {
   sellerOrders  SellerOrder[]
   importBatches ImportBatch[]
   payouts       Payout[]
+  dailySales    DailySellerSales[]
 
   @@map("seller_profiles")
 }
@@ -168,6 +170,39 @@ model Payout {
 
   @@index([sellerId])
   @@map("payouts")
+}
+
+// Denormalized daily aggregates, populated by a nightly background job (computeDailySalesRollup
+// in sales-rollup-service.ts) rather than aggregated from raw Order/SellerOrder rows on every
+// dashboard load — see functional.md > Search & Reporting and operations.md > Background Jobs.
+// `date` is always truncated to midnight UTC, one row per seller per day; monthly figures are a
+// plain SUM over that month's rows, not a separate table.
+model DailySellerSales {
+  id               String   @id @default(cuid())
+  sellerId         String
+  date             DateTime @db.Date
+  orderCount       Int
+  revenue          Decimal  @db.Decimal(10, 2)
+  commissionAmount Decimal  @db.Decimal(10, 2)
+  createdAt        DateTime @default(now())
+
+  seller SellerProfile @relation(fields: [sellerId], references: [id])
+
+  @@unique([sellerId, date])
+  @@index([sellerId])
+  @@map("daily_seller_sales")
+}
+
+/** Platform-wide counterpart of DailySellerSales — one row per day, summed across every seller. */
+model DailyPlatformSales {
+  id               String   @id @default(cuid())
+  date             DateTime @unique @db.Date
+  orderCount       Int
+  gmv              Decimal  @db.Decimal(10, 2)
+  commissionAmount Decimal  @db.Decimal(10, 2)
+  createdAt        DateTime @default(now())
+
+  @@map("daily_platform_sales")
 }
 
 enum ImportMode {
@@ -274,13 +309,17 @@ model Product {
 }
 
 model ProductVariant {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   productId      String
   sku            String
-  attributes     Json     @default("{}")
-  price          Decimal  @db.Decimal(10, 2)
-  compareAtPrice Decimal? @db.Decimal(10, 2)
-  stockQty       Int      @default(0)
+  attributes     Json      @default("{}")
+  price          Decimal   @db.Decimal(10, 2)
+  compareAtPrice Decimal?  @db.Decimal(10, 2)
+  stockQty       Int       @default(0)
+  // Set the moment stock first crosses at/under LOW_STOCK_THRESHOLD (see lib/constants.ts),
+  // so the low-stock alert fires once per dip, not once per sale while it stays low. Cleared
+  // back to null once the seller restocks above the threshold (see products.ts).
+  lowStockAlertedAt DateTime?
 
   product Product @relation(fields: [productId], references: [id])
 
@@ -335,10 +374,15 @@ model Cart {
 }
 
 model CartItem {
-  id               String @id @default(cuid())
+  id               String   @id @default(cuid())
   cartId           String
   productVariantId String
   quantity         Int
+  // Cart.updatedAt only changes at cart creation (upsert's create branch) — CartItem writes never
+  // touch the parent row, so "abandoned" line items are detected off this timestamp instead (see
+  // the cart-purge background job in inngest/functions.ts).
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   cart           Cart           @relation(fields: [cartId], references: [id])
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
