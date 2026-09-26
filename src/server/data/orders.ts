@@ -2,6 +2,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
+import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
+import { inngest } from "@/lib/inngest";
+import { logger } from "@/lib/logger";
 
 const ORDER_INCLUDE = {
   sellerOrders: {
@@ -59,7 +62,7 @@ export async function createOrderFromCart(input: {
   if (input.items.length === 0) return { ok: false, reason: "empty_cart" };
 
   try {
-    const orderId = await prisma.$transaction(async (tx) => {
+    const orderResult = await prisma.$transaction(async (tx) => {
       const variantIds = input.items.map((i) => i.productVariantId);
       const variants = await tx.productVariant.findMany({
         where: { id: { in: variantIds } },
@@ -84,6 +87,7 @@ export async function createOrderFromCart(input: {
         commissionRate: number;
       };
       const computed: ItemCompute[] = [];
+      const newlyLowStock: { sellerId: string; productId: string; productName: string; remaining: number }[] = [];
 
       for (const cartItem of input.items) {
         const variant = variantMap.get(cartItem.productVariantId);
@@ -101,6 +105,25 @@ export async function createOrderFromCart(input: {
         });
         if (decremented.count !== 1) {
           throw new CheckoutError("insufficient_stock", variant.product.name, variant.stockQty);
+        }
+
+        const remaining = variant.stockQty - cartItem.quantity;
+        if (remaining <= LOW_STOCK_THRESHOLD) {
+          // Same atomic-conditional-update trick as the stock decrement above: only the checkout
+          // that actually crosses the threshold "wins" (count === 1), so a low-stock alert fires
+          // once per dip, not once per sale while stock stays low, even under concurrent checkouts.
+          const flagged = await tx.productVariant.updateMany({
+            where: { id: variant.id, lowStockAlertedAt: null },
+            data: { lowStockAlertedAt: new Date() },
+          });
+          if (flagged.count === 1) {
+            newlyLowStock.push({
+              sellerId: variant.product.seller.id,
+              productId: variant.productId,
+              productName: variant.product.name,
+              remaining,
+            });
+          }
         }
 
         const unitPrice = Number(variant.price);
@@ -159,10 +182,19 @@ export async function createOrderFromCart(input: {
         },
       });
 
-      return created.id;
+      return { orderId: created.id, newlyLowStock };
     });
 
-    const order = await getOrderByIdForBuyer(input.buyerId, orderId);
+    // Deliberately outside the transaction — never hold a DB transaction open across a network
+    // call (same rule createStripeSessionForOrder's caller follows). A failure here must not
+    // undo or fail the checkout that already committed; the alert is best-effort.
+    for (const item of orderResult.newlyLowStock) {
+      await inngest
+        .send({ name: "product/stock-low", data: item })
+        .catch((err) => logger.error({ err, ...item }, "Failed to enqueue low-stock alert"));
+    }
+
+    const order = await getOrderByIdForBuyer(input.buyerId, orderResult.orderId);
     return { ok: true, order: order! };
   } catch (err) {
     if (err instanceof CheckoutError) {

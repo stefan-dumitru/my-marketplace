@@ -34,3 +34,14 @@ export function markNotificationsRead(userId: string, ids: string[]) {
     data: { read: true },
   });
 }
+
+/**
+ * Only ever deletes READ notifications — an unread one is something the user hasn't seen yet,
+ * so it's kept indefinitely regardless of age rather than silently disappearing before they log
+ * back in. No retention window is spec-mandated (unlike financial/audit records — see
+ * data-model.md > Data Retention), so 90 days is an invented, tunable v1 default, same convention
+ * as LOW_STOCK_THRESHOLD.
+ */
+export function deleteReadNotificationsOlderThan(cutoff: Date) {
+  return prisma.notification.deleteMany({ where: { read: true, createdAt: { lt: cutoff } } });
+}

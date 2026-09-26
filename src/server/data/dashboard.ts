@@ -1,8 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-
-// No low-stock concept exists anywhere else in the codebase — an invented, tunable v1 default.
-const LOW_STOCK_THRESHOLD = 5;
+import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
 // Plain server-local Date arithmetic — no timezone library anywhere else in this codebase to
 // match. In most deployments this means UTC, which can be off by a few hours around midnight

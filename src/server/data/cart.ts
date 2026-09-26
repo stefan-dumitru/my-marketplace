@@ -83,3 +83,12 @@ export async function getCartItemCount(userId: string): Promise<number> {
   });
   return result._sum.quantity ?? 0;
 }
+
+/**
+ * Deletes stale line items, not the Cart row itself — Cart is 1:1 with User (see the schema
+ * comment on Cart.updatedAt) and gets recreated for free via getOrCreateCartForBuyer's upsert
+ * the next time it's needed, so there's nothing to gain by deleting it too.
+ */
+export function purgeAbandonedCartItems(cutoff: Date) {
+  return prisma.cartItem.deleteMany({ where: { updatedAt: { lt: cutoff } } });
+}

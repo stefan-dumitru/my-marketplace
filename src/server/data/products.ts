@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_PAGE_SIZE, splitPage } from "@/lib/pagination";
+import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
 /**
  * Creates a Product and its single default ProductVariant in one nested-write Prisma call —
@@ -95,7 +96,15 @@ export async function updateProductForSeller(
         variants: {
           update: {
             where: { id: defaultVariantId },
-            data: { price: data.price, stockQty: data.stockQty },
+            data: {
+              price: data.price,
+              stockQty: data.stockQty,
+              // A restock above the threshold re-arms next time stock dips again — see
+              // ProductVariant.lowStockAlertedAt's doc comment in schema.prisma. Left untouched
+              // (not set to null) if the seller re-saves the form while still low, so a future
+              // dip past the threshold via a sale isn't required to re-trigger — it's already armed.
+              ...(data.stockQty > LOW_STOCK_THRESHOLD && { lowStockAlertedAt: null }),
+            },
           },
         },
       }),
@@ -124,7 +133,11 @@ export async function updateProductAttributesForSeller(
 
   return prisma.productVariant.update({
     where: { id: defaultVariantId },
-    data: { price: data.price, stockQty: data.stockQty },
+    data: {
+      price: data.price,
+      stockQty: data.stockQty,
+      ...(data.stockQty > LOW_STOCK_THRESHOLD && { lowStockAlertedAt: null }),
+    },
   });
 }
 

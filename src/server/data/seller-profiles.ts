@@ -10,6 +10,13 @@ export function getSellerProfileById(id: string) {
   return prisma.sellerProfile.findUnique({ where: { id } });
 }
 
+export function getSellerProfileWithUserById(id: string) {
+  return prisma.sellerProfile.findUnique({
+    where: { id },
+    include: { user: { select: { id: true, email: true } } },
+  });
+}
+
 export function getSellerProfileByStoreSlug(storeSlug: string) {
   return prisma.sellerProfile.findUnique({ where: { storeSlug } });
 }
