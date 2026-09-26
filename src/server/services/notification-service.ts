@@ -1,6 +1,7 @@
 import "server-only";
 import {
   createNotification,
+  deleteReadNotificationsOlderThan,
   getUnreadNotificationCount,
   listNotificationsForUser,
   markNotificationsRead,
@@ -41,4 +42,12 @@ export async function getNotifications(userId: string, page?: number) {
     notifications.filter((n) => !n.read).map((n) => n.id)
   );
   return { notifications, hasNextPage };
+}
+
+const NOTIFICATION_RETENTION_DAYS = 90;
+
+/** Called by the daily purge-old-notifications background job — see inngest/functions.ts. */
+export function purgeOldNotifications(now: Date = new Date()) {
+  const cutoff = new Date(now.getTime() - NOTIFICATION_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  return deleteReadNotificationsOlderThan(cutoff);
 }

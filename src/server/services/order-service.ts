@@ -1,7 +1,7 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { stripe } from "@/lib/stripe";
-import { sendEmail } from "@/lib/email";
+import { queueEmail } from "@/lib/email";
 import { addressSchema, SHIPPING_COUNTRY, type AddressInput } from "@/lib/validations/checkout";
 import { requestReturnSchema, type RequestReturnInput } from "@/lib/validations/return-request";
 import { getCartWithItems, clearCartItems } from "@/server/data/cart";
@@ -142,7 +142,7 @@ export async function requestReturn(
   const sellerEmail = sellerOrder.seller.user.email;
   const title = "New return request";
   const body = `A buyer has requested a return for order ${sellerOrder.order.orderNumber}. Review it from your orders dashboard.`;
-  await sendEmail({
+  await queueEmail({
     to: sellerEmail,
     subject: title,
     html: `<p>${body}</p>`,

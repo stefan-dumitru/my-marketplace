@@ -8,6 +8,7 @@ import {
   getSellerProfileById,
   getSellerProfileByStoreSlug,
   getSellerProfileByUserId,
+  getSellerProfileWithUserById,
   listApprovedSellerProfiles,
   listSuspendedSellerProfiles,
   reinstateSellerProfile as reinstateSellerProfileData,
@@ -16,7 +17,7 @@ import {
   suspendSellerProfileAndDeactivateProducts,
 } from "@/server/data/seller-profiles";
 import { slugify } from "@/lib/slug";
-import { sendEmail } from "@/lib/email";
+import { queueEmail } from "@/lib/email";
 import { getUserById } from "@/server/data/users";
 import { createAuditLog } from "@/server/data/audit-log";
 import { notifyUser } from "@/server/services/notification-service";
@@ -82,7 +83,7 @@ export async function applyForSellerAccount(
   if (user) {
     const receivedTitle = "Seller application received";
     const receivedBody = "Thanks for applying to sell on My Marketplace. We'll review your application and let you know once it's decided.";
-    await sendEmail({
+    await queueEmail({
       to: user.email,
       subject: receivedTitle,
       html: `<p>${receivedBody}</p>`,
@@ -126,7 +127,7 @@ export async function approveSellerApplication(
   if (user) {
     const approvedTitle = "You're approved to sell on My Marketplace";
     const approvedBody = `Congratulations — your seller application for "${profile.storeName}" has been approved. You can now list products.`;
-    await sendEmail({
+    await queueEmail({
       to: user.email,
       subject: approvedTitle,
       html: `<p>${approvedBody}</p>`,
@@ -167,7 +168,7 @@ export async function rejectSellerApplication(
   if (user) {
     const rejectedTitle = "Update on your seller application";
     const rejectedBody = `Thanks for your interest in selling on My Marketplace. After review, we're not able to approve your application for "${profile.storeName}" at this time.`;
-    await sendEmail({
+    await queueEmail({
       to: user.email,
       subject: rejectedTitle,
       html: `<p>${rejectedBody}</p>`,
@@ -220,7 +221,7 @@ export async function suspendSeller(
   if (user) {
     const suspendedTitle = "Your seller account has been suspended";
     const suspendedBody = `Your seller account "${profile.storeName}" has been suspended and your listings have been deactivated. Contact support for next steps.`;
-    await sendEmail({
+    await queueEmail({
       to: user.email,
       subject: suspendedTitle,
       html: `<p>${suspendedBody}</p>`,
@@ -259,7 +260,7 @@ export async function reinstateSeller(
   if (user) {
     const reinstatedTitle = "Your seller account has been reinstated";
     const reinstatedBody = `Your seller account "${updated.storeName}" has been reinstated. Your previous listings are still inactive — reactivate each one from your dashboard when you're ready.`;
-    await sendEmail({
+    await queueEmail({
       to: user.email,
       subject: reinstatedTitle,
       html: `<p>${reinstatedBody}</p>`,
@@ -303,6 +304,40 @@ export async function updateSellerCommission(
     afterValue: { commissionRateOverride: rate },
   });
   return { ok: true };
+}
+
+/**
+ * Called by inngest/functions.ts's sendLowStockAlertFunction — the seller-facing half of the
+ * checkout-time low-stock detection in orders.ts's createOrderFromCart. A seller with no email on
+ * record can't happen in practice (registration requires one), but the null-check keeps this a
+ * plain no-op rather than a thrown error if that ever changes.
+ */
+export async function notifySellerLowStock(input: {
+  sellerId: string;
+  productId: string;
+  productName: string;
+  remaining: number;
+}) {
+  const profile = await getSellerProfileWithUserById(input.sellerId);
+  if (!profile) return;
+
+  const title = "Low stock alert";
+  const body = `"${input.productName}" is down to ${input.remaining} unit(s) left in stock. Restock soon to avoid selling out.`;
+  await queueEmail({
+    to: profile.user.email,
+    subject: title,
+    html: `<p>${body}</p>`,
+    text: body,
+  }).catch(() => {
+    // Best-effort notification — see approveSellerApplication for the same pattern.
+  });
+  await notifyUser({
+    userId: profile.user.id,
+    type: "low_stock_alert",
+    title,
+    body,
+    link: `/seller/products`,
+  }).catch(() => {});
 }
 
 /**

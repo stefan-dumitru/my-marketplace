@@ -1,6 +1,6 @@
 import "server-only";
 import { parse } from "csv-parse/sync";
-import { sendEmail } from "@/lib/email";
+import { queueEmail } from "@/lib/email";
 import { inngest } from "@/lib/inngest";
 import { createAuditLog } from "@/server/data/audit-log";
 import { notifyUser } from "@/server/services/notification-service";
@@ -270,7 +270,7 @@ export async function processImportRows(
 
   const importTitle = "Bulk import completed";
   const importBody = `Your product import finished: ${succeededRows} row(s) succeeded, ${failedRows} row(s) failed, out of ${rawRows.length} total.`;
-  await sendEmail({
+  await queueEmail({
     to: sellerEmail,
     subject: importTitle,
     html: `<p>${importBody}</p>`,

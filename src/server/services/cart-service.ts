@@ -10,6 +10,7 @@ import {
 } from "@/lib/validations/cart";
 import {
   getOrCreateCartForBuyer,
+  purgeAbandonedCartItems,
   removeCartItemForBuyer,
   updateCartItemQuantityForBuyer,
   upsertCartItemQuantity,
@@ -79,4 +80,12 @@ export async function removeFromCart(
   const removed = await removeCartItemForBuyer(cart.id, parsed.data.cartItemId);
   if (!removed) return { ok: false, formError: "Item not found in your cart." };
   return { ok: true };
+}
+
+const ABANDONED_CART_DAYS = 30;
+
+/** Called by the daily purge-abandoned-carts background job — see inngest/functions.ts. */
+export function purgeAbandonedCarts(now: Date = new Date()) {
+  const cutoff = new Date(now.getTime() - ABANDONED_CART_DAYS * 24 * 60 * 60 * 1000);
+  return purgeAbandonedCartItems(cutoff);
 }

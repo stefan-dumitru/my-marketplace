@@ -1,6 +1,6 @@
 import "server-only";
 import { stripe } from "@/lib/stripe";
-import { sendEmail } from "@/lib/email";
+import { queueEmail } from "@/lib/email";
 import { shipOrderSchema, type ShipOrderInput } from "@/lib/validations/seller-order";
 import {
   cancelSellerOrderTransaction,
@@ -93,7 +93,7 @@ export async function markDelivered(
   const orderNumber = updated.order.orderNumber;
   const deliveredTitle = "Your order has been delivered";
   const deliveredBody = `Your order ${orderNumber} has been marked as delivered. You can now leave a review from your order page.`;
-  await sendEmail({
+  await queueEmail({
     to: buyerEmail,
     subject: deliveredTitle,
     html: `<p>Your order ${orderNumber} has been marked as delivered. Let us know what you think — you can now leave a review from your order page.</p>`,
@@ -232,7 +232,7 @@ export async function resolveReturn(
     if (decision === "rejected") {
       const rejectedTitle = "Your return request was not approved";
       const rejectedBody = `Your return request for order ${current.order.orderNumber} was not approved by the seller.`;
-      await sendEmail({
+      await queueEmail({
         to: current.order.buyer.email,
         subject: rejectedTitle,
         html: `<p>${rejectedBody}</p>`,
@@ -287,7 +287,7 @@ export async function resolveReturn(
 
   const approvedTitle = "Your return has been approved and refunded";
   const approvedBody = `Your return for order ${current.order.orderNumber} has been approved and refunded.`;
-  await sendEmail({
+  await queueEmail({
     to: current.order.buyer.email,
     subject: approvedTitle,
     html: `<p>${approvedBody}</p>`,

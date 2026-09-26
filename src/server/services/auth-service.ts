@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { createUser, getUserByEmail, markEmailVerified } from "@/server/data/users";
 import { createVerificationToken, consumeVerificationToken } from "@/server/data/verification-tokens";
-import { sendEmail } from "@/lib/email";
+import { queueEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
 // Exported so account-service.ts hashes the throwaway password it writes during GDPR
@@ -23,16 +23,17 @@ async function sendVerificationEmail(email: string) {
   // A delivery failure (provider down, sandbox-restricted recipient, etc.) must not fail
   // registration itself — the account is still created either way, and ResendVerificationButton
   // already gives the user a retry path. See operations.md > External Integrations: "the
-  // underlying action still completes... not blocking."
+  // underlying action still completes... not blocking." The actual send now happens off the
+  // request path via queueEmail (see lib/email.ts) — only the enqueue itself is guarded here.
   try {
-    await sendEmail({
+    await queueEmail({
       to: email,
       subject: "Verify your email",
       html: `<p>Confirm your email to finish setting up your account.</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`,
       text: `Confirm your email to finish setting up your account: ${verifyUrl}`,
     });
   } catch (err) {
-    logger.error({ err }, "Failed to send verification email");
+    logger.error({ err }, "Failed to queue verification email");
   }
 }
 
