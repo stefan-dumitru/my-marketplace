@@ -6,6 +6,8 @@ import {
   listNotificationsForUser,
   markNotificationsRead,
 } from "@/server/data/notifications";
+import { listAdminUsers } from "@/server/data/users";
+import { queueEmail } from "@/lib/email";
 import type { NotificationType } from "@/generated/prisma/enums";
 import { splitPage } from "@/lib/pagination";
 
@@ -21,6 +23,27 @@ export function notifyUser(input: {
   link?: string;
 }) {
   return createNotification(input);
+}
+
+/**
+ * Fan-out for the three admin-facing alert types (new seller application, product pending
+ * review, background/webhook failure) — there's no single "the admin," so every admin user gets
+ * their own in-app notification and email, each independently best-effort (one admin's failed
+ * email/notification write must never block another's, mirroring notifyUser's own contract).
+ */
+export async function notifyAdmins(input: { type: NotificationType; title: string; body: string; link?: string }) {
+  const admins = await listAdminUsers();
+  await Promise.all(
+    admins.map(async (admin) => {
+      await queueEmail({
+        to: admin.email,
+        subject: input.title,
+        html: `<p>${input.body}</p>`,
+        text: input.body,
+      }).catch(() => {});
+      await notifyUser({ userId: admin.id, ...input }).catch(() => {});
+    })
+  );
 }
 
 export function getUnreadCount(userId: string) {

@@ -8,6 +8,7 @@ import { getCartWithItems, clearCartItems } from "@/server/data/cart";
 import {
   createOrderFromCart,
   getOrderByIdForBuyer,
+  getOrderForNotification,
   markPaymentFailed,
   updateOrderPaymentSession,
 } from "@/server/data/orders";
@@ -160,4 +161,74 @@ export async function requestReturn(
   }).catch(() => {});
 
   return { ok: true };
+}
+
+/**
+ * Called from the Stripe webhook's checkout.session.completed handler, gated there on the
+ * payment update's own count so a webhook redelivery (which matches zero rows the second time)
+ * can't double-notify — see that handler's existing idempotency comment.
+ */
+export async function notifyOrderConfirmed(orderId: string) {
+  const order = await getOrderForNotification(orderId);
+  if (!order) return;
+
+  const buyerTitle = "Order confirmed";
+  const buyerBody = `Your order ${order.orderNumber} has been paid and is being prepared by the seller(s).`;
+  await queueEmail({
+    to: order.buyer.email,
+    subject: buyerTitle,
+    html: `<p>${buyerBody}</p>`,
+    text: buyerBody,
+  }).catch(() => {});
+  await notifyUser({
+    userId: order.buyer.id,
+    type: "order_confirmed",
+    title: buyerTitle,
+    body: buyerBody,
+    link: `/orders/${order.id}`,
+  }).catch(() => {});
+
+  // One "new order" notification per seller sub-order, not per order — each seller only cares
+  // about their own slice (see the per-seller fulfillment model this app uses throughout).
+  await Promise.all(
+    order.sellerOrders.map(async (sellerOrder) => {
+      const sellerTitle = "New order received";
+      const sellerBody = `You have a new order to fulfill (order ${order.orderNumber}).`;
+      await queueEmail({
+        to: sellerOrder.seller.user.email,
+        subject: sellerTitle,
+        html: `<p>${sellerBody}</p>`,
+        text: sellerBody,
+      }).catch(() => {});
+      await notifyUser({
+        userId: sellerOrder.seller.user.id,
+        type: "seller_order_received",
+        title: sellerTitle,
+        body: sellerBody,
+        link: `/seller/orders/${sellerOrder.id}`,
+      }).catch(() => {});
+    })
+  );
+}
+
+/** Called from the Stripe webhook's checkout.session.expired handler, same redelivery guard as notifyOrderConfirmed. */
+export async function notifyPaymentFailed(orderId: string) {
+  const order = await getOrderForNotification(orderId);
+  if (!order) return;
+
+  const title = "Payment failed";
+  const body = `Your payment for order ${order.orderNumber} didn't go through. You can retry from your order page.`;
+  await queueEmail({
+    to: order.buyer.email,
+    subject: title,
+    html: `<p>${body}</p>`,
+    text: body,
+  }).catch(() => {});
+  await notifyUser({
+    userId: order.buyer.id,
+    type: "order_payment_failed",
+    title,
+    body,
+    link: `/orders/${order.id}`,
+  }).catch(() => {});
 }

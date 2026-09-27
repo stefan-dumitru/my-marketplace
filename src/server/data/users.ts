@@ -10,6 +10,11 @@ export function getUserById(id: string) {
   return prisma.user.findUnique({ where: { id } });
 }
 
+/** Recipients for admin-facing notifications (new seller applications, moderation, alerts) — see notification-service.ts's notifyAdmins. */
+export function listAdminUsers() {
+  return prisma.user.findMany({ where: { role: "admin" }, select: { id: true, email: true } });
+}
+
 export function createUser(input: {
   email: string;
   passwordHash: string;
@@ -32,6 +37,13 @@ export function markEmailVerified(userId: string) {
   return prisma.user.update({
     where: { id: userId },
     data: { emailVerifiedAt: new Date() },
+  });
+}
+
+export function setPasswordAndBumpSessionVersion(userId: string, passwordHash: string) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash, sessionVersion: { increment: 1 } },
   });
 }
 
@@ -98,8 +110,9 @@ export async function anonymizeUserById(userId: string, scrubbedPasswordHash: st
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
       await tx.cart.delete({ where: { id: cart.id } });
     }
-    // Both of these store the raw email in a column of their own.
+    // All three store the raw email in a column of their own.
     await tx.verificationToken.deleteMany({ where: { identifier: user.email } });
+    await tx.passwordResetToken.deleteMany({ where: { identifier: user.email } });
     await tx.rateLimitBucket.deleteMany({ where: { key: `login:${user.email}` } });
 
     return tx.user.update({

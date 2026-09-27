@@ -3,14 +3,18 @@ import { Prisma } from "@/generated/prisma/client";
 import { createReviewSchema, type CreateReviewInput } from "@/lib/validations/review";
 import {
   createReview,
+  findOrderItemsNeedingReviewReminder,
   findReviewableOrderItemForBuyer,
   getReviewSummaryForProduct,
   listApprovedReviewsForProduct,
-  listPendingReviews,
+  listReviewsForAdmin,
   setReviewStatus,
 } from "@/server/data/reviews";
 import { createAuditLog } from "@/server/data/audit-log";
 import { splitPage } from "@/lib/pagination";
+import { queueEmail } from "@/lib/email";
+import { notifyUser } from "@/server/services/notification-service";
+import { REVIEW_REMINDER_DELAY_DAYS } from "@/lib/constants";
 
 export type SubmitReviewResult =
   | { ok: true }
@@ -63,12 +67,18 @@ export async function getProductReviews(productId: string) {
   return { reviews, summary };
 }
 
-export async function listPendingReviewsForAdmin(page?: number) {
-  const rows = await listPendingReviews({ page });
+export async function listReviewsForAdminModeration(page?: number) {
+  const rows = await listReviewsForAdmin({ page });
   const { items: reviews, hasNextPage } = splitPage(rows);
   return { reviews, hasNextPage };
 }
 
+/**
+ * Post-publish moderation only — every review is already live (auto-approved on submission, see
+ * submitReview) by the time this runs. "approved" restores a previously taken-down review;
+ * "rejected" takes down a live one. Either direction is a no-op if the review is already in that
+ * state (see setReviewStatus's guard).
+ */
 export async function moderateReview(
   reviewId: string,
   decision: "approved" | "rejected",
@@ -76,16 +86,58 @@ export async function moderateReview(
 ): Promise<ModerateReviewResult> {
   const applied = await setReviewStatus(reviewId, decision);
   if (!applied) {
-    return { ok: false, formError: "This review was already decided." };
+    return { ok: false, formError: "This review is already in that state." };
   }
-  // Prior status is guaranteed "pending" by setReviewStatus's own verify-then-update guard.
   await createAuditLog({
     actorUserId,
     action: decision === "approved" ? "review_approved" : "review_rejected",
     entityType: "Review",
     entityId: reviewId,
-    beforeValue: { status: "pending" },
     afterValue: { status: decision },
   });
   return { ok: true };
+}
+
+/** Midnight UTC for whatever calendar day `d` falls on — mirrors sales-rollup-service.ts's own
+ *  dateOnlyUTC, kept local rather than shared since the two day-bucket jobs are otherwise unrelated. */
+function dateOnlyUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/**
+ * Called daily by the review-reminder background job (see inngest/functions.ts). Reminds buyers
+ * about exactly the order items whose delivery crossed the REVIEW_REMINDER_DELAY_DAYS threshold
+ * "today" (relative to `now`) — a single calendar-day bucket, not "delivered more than N days
+ * ago," so a daily run only ever reminds each item once, on the one day it qualifies. See
+ * findOrderItemsNeedingReviewReminder's doc comment for why this needs no separate dedup table.
+ */
+export async function sendReviewReminders(now: Date = new Date()): Promise<{ remindersSent: number }> {
+  const today = dateOnlyUTC(now);
+  const dayStart = new Date(today.getTime() - REVIEW_REMINDER_DELAY_DAYS * 24 * 60 * 60 * 1000);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+  const items = await findOrderItemsNeedingReviewReminder(dayStart, dayEnd);
+
+  await Promise.all(
+    items.map(async (item) => {
+      const buyer = item.sellerOrder.order.buyer;
+      const title = "How was your purchase?";
+      const body = `Now that "${item.productNameSnapshot}" has arrived, we'd love to hear what you think — leave a review from your order page.`;
+      await queueEmail({
+        to: buyer.email,
+        subject: title,
+        html: `<p>${body}</p>`,
+        text: body,
+      }).catch(() => {});
+      await notifyUser({
+        userId: buyer.id,
+        type: "review_reminder",
+        title,
+        body,
+        link: `/orders/${item.sellerOrder.order.id}`,
+      }).catch(() => {});
+    })
+  );
+
+  return { remindersSent: items.length };
 }

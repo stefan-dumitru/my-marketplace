@@ -22,6 +22,29 @@ export function findReviewableOrderItemForBuyer(buyerId: string, orderItemId: st
   });
 }
 
+/**
+ * Order items delivered within [dayStart, dayEnd) that still have no review — the candidate set
+ * for the "leave a review" reminder job (see sendReviewReminders). Scoped to a single calendar
+ * day, not "delivered more than N days ago," so a daily cron run only ever reminds each item
+ * once, on the one day it crosses the threshold — mirroring sales-rollup-service.ts's own
+ * day-bucket pattern for the same reason (idempotent per run, no dedup table needed).
+ */
+export function findOrderItemsNeedingReviewReminder(dayStart: Date, dayEnd: Date) {
+  return prisma.orderItem.findMany({
+    where: {
+      review: null,
+      sellerOrder: { status: "delivered", deliveredAt: { gte: dayStart, lt: dayEnd } },
+    },
+    select: {
+      id: true,
+      productNameSnapshot: true,
+      sellerOrder: {
+        select: { order: { select: { id: true, buyer: { select: { id: true, email: true } } } } },
+      },
+    },
+  });
+}
+
 export function createReview(data: {
   productId: string;
   buyerId: string;
@@ -30,7 +53,9 @@ export function createReview(data: {
   title: string;
   body: string;
 }) {
-  return prisma.review.create({ data });
+  // Explicit rather than relying on the schema default alone — this line is the actual
+  // "no admin approval gate" decision, so it shouldn't be implicit.
+  return prisma.review.create({ data: { ...data, status: "approved" } });
 }
 
 export function listApprovedReviewsForProduct(productId: string) {
@@ -50,11 +75,17 @@ export async function getReviewSummaryForProduct(productId: string) {
   return { average: result._avg.rating, count: result._count };
 }
 
-export function listPendingReviews(opts?: { page?: number }) {
+/**
+ * Post-publish moderation queue: every review auto-approves on submission (see createReview), so
+ * there's no pre-publish "pending" backlog anymore — this lists live (approved) and already
+ * taken-down (rejected) reviews together, newest first, so an admin can spot and act on new
+ * content instead of triaging a queue.
+ */
+export function listReviewsForAdmin(opts?: { page?: number }) {
   const page = opts?.page ?? 1;
   return prisma.review.findMany({
-    where: { status: "pending" },
-    orderBy: { createdAt: "asc" },
+    where: { status: { in: ["approved", "rejected"] } },
+    orderBy: { createdAt: "desc" },
     skip: (page - 1) * DEFAULT_PAGE_SIZE,
     take: DEFAULT_PAGE_SIZE + 1,
     include: {
@@ -64,10 +95,14 @@ export function listPendingReviews(opts?: { page?: number }) {
   });
 }
 
-/** Verify-then-update: only a still-pending review can be moderated. */
+/**
+ * Verify-then-update: toggles a review between visible (approved) and taken-down (rejected).
+ * Guards against a no-op (setting the status it's already in) and a concurrent double-submit
+ * racing the same change, the same way suspendSeller/reinstateSeller guard their own toggle.
+ */
 export async function setReviewStatus(reviewId: string, status: Extract<ReviewStatus, "approved" | "rejected">) {
   const result = await prisma.review.updateMany({
-    where: { id: reviewId, status: "pending" },
+    where: { id: reviewId, status: { not: status } },
     data: { status },
   });
   return result.count === 1;

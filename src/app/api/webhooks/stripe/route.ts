@@ -2,6 +2,8 @@ import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { createAuditLog } from "@/server/data/audit-log";
+import { notifyOrderConfirmed, notifyPaymentFailed } from "@/server/services/order-service";
+import { notifyAdmins } from "@/server/services/notification-service";
 import type Stripe from "stripe";
 
 // Next's App Router Route Handlers never auto-parse the body — req.text() gives the exact
@@ -24,88 +26,107 @@ export async function POST(req: Request) {
     return new Response("Invalid signature", { status: 400 });
   }
 
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const orderId = session.metadata?.orderId;
-      if (!orderId) break;
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const orderId = session.metadata?.orderId;
+        if (!orderId) break;
 
-      const paymentIntentId =
-        typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+        const paymentIntentId =
+          typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
 
-      // Every write below is a conditional updateMany guarded by current status, so redelivery
-      // of this event is a harmless no-op — naturally idempotent with no processed-events table
-      // needed, specifically because stock was already decremented at order-creation time, not
-      // here. The audit log entry is gated on the payment update's own count so a redelivery
-      // (which matches zero rows the second time) can't double-log either.
-      const paymentUpdate = await prisma.payment.updateMany({
-        where: { orderId, status: { not: "succeeded" } },
-        data: { status: "succeeded", paidAt: new Date(), stripePaymentIntentId: paymentIntentId },
-      });
-      await prisma.sellerOrder.updateMany({
-        where: { orderId, status: "pending" },
-        data: { status: "confirmed" },
-      });
-      await prisma.order.updateMany({
-        where: { id: orderId, status: "pending_payment" },
-        data: { status: "paid" },
-      });
-      if (paymentUpdate.count > 0) {
-        await createAuditLog({
-          actorUserId: null,
-          action: "payment_succeeded",
-          entityType: "Payment",
-          entityId: orderId,
-          afterValue: { stripePaymentIntentId: paymentIntentId ?? null },
+        // Every write below is a conditional updateMany guarded by current status, so redelivery
+        // of this event is a harmless no-op — naturally idempotent with no processed-events table
+        // needed, specifically because stock was already decremented at order-creation time, not
+        // here. The audit log entry (and the buyer/seller notifications below) are gated on the
+        // payment update's own count so a redelivery (which matches zero rows the second time)
+        // can't double-log or double-notify either.
+        const paymentUpdate = await prisma.payment.updateMany({
+          where: { orderId, status: { not: "succeeded" } },
+          data: { status: "succeeded", paidAt: new Date(), stripePaymentIntentId: paymentIntentId },
         });
-      }
-      break;
-    }
-
-    case "checkout.session.expired": {
-      // The correct abandonment event for Checkout specifically — a single card decline doesn't
-      // end the session (Stripe lets the buyer retry within it), only hitting expires_at
-      // unconfirmed does. Stock is deliberately NOT released here — accepted gap, see the plan.
-      const session = event.data.object as Stripe.Checkout.Session;
-      const orderId = session.metadata?.orderId;
-      if (!orderId) break;
-
-      const paymentFailUpdate = await prisma.payment.updateMany({
-        where: { orderId, status: "pending" },
-        data: { status: "failed" },
-      });
-      await prisma.order.updateMany({
-        where: { id: orderId, status: "pending_payment" },
-        data: { status: "payment_failed" },
-      });
-      if (paymentFailUpdate.count > 0) {
-        await createAuditLog({
-          actorUserId: null,
-          action: "payment_failed",
-          entityType: "Payment",
-          entityId: orderId,
+        await prisma.sellerOrder.updateMany({
+          where: { orderId, status: "pending" },
+          data: { status: "confirmed" },
         });
+        await prisma.order.updateMany({
+          where: { id: orderId, status: "pending_payment" },
+          data: { status: "paid" },
+        });
+        if (paymentUpdate.count > 0) {
+          await createAuditLog({
+            actorUserId: null,
+            action: "payment_succeeded",
+            entityType: "Payment",
+            entityId: orderId,
+            afterValue: { stripePaymentIntentId: paymentIntentId ?? null },
+          });
+          await notifyOrderConfirmed(orderId);
+        }
+        break;
       }
-      break;
-    }
 
-    case "account.updated": {
-      // Background sync for Connect onboarding status — connect-service.ts's
-      // reconcileConnectStatus is the belt-and-suspenders live check for the one page (seller
-      // payouts) that can't wait on webhook delivery; this keeps payoutsEnabled fresh everywhere
-      // else (notably: the admin payout queue, which reads it without a live Stripe call).
-      const account = event.data.object as Stripe.Account;
-      await prisma.sellerProfile.updateMany({
-        where: { stripeConnectAccountId: account.id },
-        data: { payoutsEnabled: account.payouts_enabled ?? false },
-      });
-      break;
-    }
+      case "checkout.session.expired": {
+        // The correct abandonment event for Checkout specifically — a single card decline doesn't
+        // end the session (Stripe lets the buyer retry within it), only hitting expires_at
+        // unconfirmed does. Stock is deliberately NOT released here — accepted gap, see the plan.
+        const session = event.data.object as Stripe.Checkout.Session;
+        const orderId = session.metadata?.orderId;
+        if (!orderId) break;
 
-    default:
-      // Unhandled event types are acknowledged, not rejected — Stripe doesn't require every
-      // type to be explicitly handled.
-      break;
+        const paymentFailUpdate = await prisma.payment.updateMany({
+          where: { orderId, status: "pending" },
+          data: { status: "failed" },
+        });
+        await prisma.order.updateMany({
+          where: { id: orderId, status: "pending_payment" },
+          data: { status: "payment_failed" },
+        });
+        if (paymentFailUpdate.count > 0) {
+          await createAuditLog({
+            actorUserId: null,
+            action: "payment_failed",
+            entityType: "Payment",
+            entityId: orderId,
+          });
+          await notifyPaymentFailed(orderId);
+        }
+        break;
+      }
+
+      case "account.updated": {
+        // Background sync for Connect onboarding status — connect-service.ts's
+        // reconcileConnectStatus is the belt-and-suspenders live check for the one page (seller
+        // payouts) that can't wait on webhook delivery; this keeps payoutsEnabled fresh everywhere
+        // else (notably: the admin payout queue, which reads it without a live Stripe call).
+        const account = event.data.object as Stripe.Account;
+        await prisma.sellerProfile.updateMany({
+          where: { stripeConnectAccountId: account.id },
+          data: { payoutsEnabled: account.payouts_enabled ?? false },
+        });
+        break;
+      }
+
+      default:
+        // Unhandled event types are acknowledged, not rejected — Stripe doesn't require every
+        // type to be explicitly handled.
+        break;
+    }
+  } catch (err) {
+    // Anything thrown while processing an already-signature-verified event (a DB error, a bug in
+    // one of the branches above) would otherwise just 500 silently — Stripe retries on its own
+    // schedule, but nobody here would know something's actually broken until orders start piling
+    // up unprocessed. Surfacing it as an admin alert is the whole point of this catch; the 500
+    // response (thrown again below) is what makes Stripe retry at all.
+    logger.error({ err, eventType: event.type }, "Stripe webhook handler failed");
+    await notifyAdmins({
+      type: "webhook_failure",
+      title: "Stripe webhook processing failed",
+      body: `Processing a "${event.type}" webhook event (id ${event.id}) failed. Check server logs — Stripe will retry delivery, but this needs investigating.`,
+      link: "/admin",
+    }).catch(() => {});
+    return new Response("Webhook handler error", { status: 500 });
   }
 
   return new Response(null, { status: 200 });

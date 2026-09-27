@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { submitReview, getProductReviews } from "@/server/services/review-service";
+import { submitReview, getProductReviews, moderateReview, sendReviewReminders } from "@/server/services/review-service";
+import { REVIEW_REMINDER_DELAY_DAYS } from "@/lib/constants";
 import {
   createBuyer,
   createApprovedSeller,
@@ -34,7 +35,7 @@ describe("submitReview", () => {
     expect(count).toBe(0);
   });
 
-  it("submits a review once the order is delivered", async () => {
+  it("submits a review once the order is delivered, auto-approved with no admin gate", async () => {
     const buyer = await createBuyer();
     const { profile } = await createApprovedSeller();
     const category = await createCategory();
@@ -46,7 +47,7 @@ describe("submitReview", () => {
     expect(result.ok).toBe(true);
     const review = await prisma.review.findFirstOrThrow({ where: { orderItemId: orderItem.id } });
     expect(review.rating).toBe(5);
-    expect(review.status).toBe("pending");
+    expect(review.status).toBe("approved");
   });
 
   it("rejects a duplicate review for the same order item (P2002 backstop)", async () => {
@@ -66,7 +67,7 @@ describe("submitReview", () => {
 });
 
 describe("getProductReviews", () => {
-  it("lists approved reviews and computes the average rating", async () => {
+  it("lists auto-approved reviews and computes the average rating", async () => {
     const buyerA = await createBuyer();
     const buyerB = await createBuyer();
     const { profile } = await createApprovedSeller();
@@ -85,8 +86,6 @@ describe("getProductReviews", () => {
     await deliverSellerOrder(sellerOrderB.id);
     await submitReview(buyerB.id, orderItemB.id, { rating: 2, title: "Not great", body: "Didn't meet expectations." });
 
-    await prisma.review.updateMany({ where: { productId: product.id }, data: { status: "approved" } });
-
     const { reviews, summary } = await getProductReviews(product.id);
 
     expect(reviews).toHaveLength(2);
@@ -94,13 +93,14 @@ describe("getProductReviews", () => {
     expect(summary.average).toBe(3);
   });
 
-  it("excludes pending (unmoderated) reviews from the summary", async () => {
+  it("excludes a review an admin has taken down", async () => {
     const buyer = await createBuyer();
     const { profile } = await createApprovedSeller();
     const category = await createCategory();
     const { sellerOrder, orderItem } = await placeOrderAndGetItem(buyer.id, profile.id, category.id);
     await deliverSellerOrder(sellerOrder.id);
     await submitReview(buyer.id, orderItem.id, REVIEW_INPUT);
+    await prisma.review.updateMany({ where: { orderItemId: orderItem.id }, data: { status: "rejected" } });
 
     const { reviews, summary } = await getProductReviews(
       (await prisma.orderItem.findUniqueOrThrow({ where: { id: orderItem.id }, include: { productVariant: true } }))
@@ -109,5 +109,100 @@ describe("getProductReviews", () => {
 
     expect(reviews).toHaveLength(0);
     expect(summary.count).toBe(0);
+  });
+});
+
+describe("moderateReview (post-publish takedown/restore)", () => {
+  async function submitApprovedReview() {
+    const buyer = await createBuyer();
+    const admin = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const { sellerOrder, orderItem } = await placeOrderAndGetItem(buyer.id, profile.id, category.id);
+    await deliverSellerOrder(sellerOrder.id);
+    await submitReview(buyer.id, orderItem.id, REVIEW_INPUT);
+    const review = await prisma.review.findFirstOrThrow({ where: { orderItemId: orderItem.id } });
+    return { review, admin };
+  }
+
+  it("takes down a live review", async () => {
+    const { review, admin } = await submitApprovedReview();
+
+    const result = await moderateReview(review.id, "rejected", admin.id);
+
+    expect(result.ok).toBe(true);
+    const updated = await prisma.review.findUniqueOrThrow({ where: { id: review.id } });
+    expect(updated.status).toBe("rejected");
+  });
+
+  it("restores a previously taken-down review", async () => {
+    const { review, admin } = await submitApprovedReview();
+    await moderateReview(review.id, "rejected", admin.id);
+
+    const result = await moderateReview(review.id, "approved", admin.id);
+
+    expect(result.ok).toBe(true);
+    const updated = await prisma.review.findUniqueOrThrow({ where: { id: review.id } });
+    expect(updated.status).toBe("approved");
+  });
+
+  it("is a no-op when the review is already in the requested state", async () => {
+    const { review, admin } = await submitApprovedReview();
+
+    const result = await moderateReview(review.id, "approved", admin.id);
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("sendReviewReminders", () => {
+  async function backdateDelivery(sellerOrderId: string, daysAgo: number) {
+    const deliveredAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+    await prisma.sellerOrder.update({ where: { id: sellerOrderId }, data: { deliveredAt } });
+    return deliveredAt;
+  }
+
+  it("reminds a buyer about an item that crossed the delay threshold today", async () => {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const { sellerOrder } = await placeOrderAndGetItem(buyer.id, profile.id, category.id);
+    await deliverSellerOrder(sellerOrder.id);
+    await backdateDelivery(sellerOrder.id, REVIEW_REMINDER_DELAY_DAYS);
+
+    const result = await sendReviewReminders(new Date());
+
+    expect(result.remindersSent).toBe(1);
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: { userId: buyer.id, type: "review_reminder" },
+    });
+    expect(notification.link).toBe(`/orders/${sellerOrder.orderId}`);
+  });
+
+  it("does not remind again once a review already exists", async () => {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const { sellerOrder, orderItem } = await placeOrderAndGetItem(buyer.id, profile.id, category.id);
+    await deliverSellerOrder(sellerOrder.id);
+    await backdateDelivery(sellerOrder.id, REVIEW_REMINDER_DELAY_DAYS);
+    await submitReview(buyer.id, orderItem.id, REVIEW_INPUT);
+
+    const result = await sendReviewReminders(new Date());
+
+    expect(result.remindersSent).toBe(0);
+  });
+
+  it("does not remind outside the exact day bucket", async () => {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const { sellerOrder } = await placeOrderAndGetItem(buyer.id, profile.id, category.id);
+    await deliverSellerOrder(sellerOrder.id);
+    await backdateDelivery(sellerOrder.id, REVIEW_REMINDER_DELAY_DAYS + 2);
+
+    const result = await sendReviewReminders(new Date());
+
+    expect(result.remindersSent).toBe(0);
   });
 });

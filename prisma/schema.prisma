@@ -70,6 +70,14 @@ enum NotificationType {
   seller_reinstated
   import_completed
   low_stock_alert
+  order_confirmed
+  order_payment_failed
+  order_shipped
+  review_reminder
+  seller_order_received
+  payout_processed
+  product_pending_review
+  webhook_failure
 }
 
 model Notification {
@@ -95,6 +103,21 @@ model VerificationToken {
 
   @@unique([identifier, token])
   @@map("verification_tokens")
+}
+
+// Deliberately a separate table from VerificationToken rather than a shared `purpose` column:
+// both are keyed by `identifier` (email) with "at most one outstanding token" semantics, and a
+// shared table would mean requesting a password reset silently invalidates a pending email-
+// verification link for the same address (and vice versa) — two unrelated flows stepping on each
+// other. Shorter TTL than email verification (1h vs 24h) since a stale reset link is a more
+// sensitive credential to leave valid.
+model PasswordResetToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("password_reset_tokens")
 }
 
 // --- Catalog + seller onboarding ---
@@ -473,6 +496,11 @@ model OrderItem {
 }
 
 enum ReviewStatus {
+  // No admin pre-publish gate — every review is auto-approved on submission (see
+  // review-service.ts's submitReview). `pending` is kept only because it's a real value in
+  // existing rows/migrations; nothing can create one anymore. Post-publish moderation still
+  // exists: an admin can flip a review to `rejected` (unpublish it) or back to `approved`
+  // (restore it) — see admin/reviews.
   pending
   approved
   rejected
@@ -486,7 +514,7 @@ model Review {
   rating      Int
   title       String
   body        String
-  status      ReviewStatus @default(pending)
+  status      ReviewStatus @default(approved)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

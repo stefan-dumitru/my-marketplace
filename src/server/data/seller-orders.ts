@@ -60,6 +60,7 @@ export async function markSellerOrderShippedForSeller(
   return prisma.sellerOrder.update({
     where: { id: sellerOrderId },
     data: { status: "shipped", shippedAt: new Date(), trackingNumber },
+    include: SELLER_ORDER_INCLUDE,
   });
 }
 

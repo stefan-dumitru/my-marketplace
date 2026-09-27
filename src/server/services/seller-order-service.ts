@@ -66,6 +66,27 @@ export async function markShipped(
     beforeValue: { status: "confirmed" },
     afterValue: { status: "shipped", trackingNumber: parsed.data.trackingNumber },
   });
+
+  const buyerEmail = updated.order.buyer.email;
+  const orderNumber = updated.order.orderNumber;
+  const shippedTitle = "Your order has shipped";
+  const shippedBody = `Your order ${orderNumber} has shipped${parsed.data.trackingNumber ? ` — tracking number ${parsed.data.trackingNumber}` : ""}.`;
+  await queueEmail({
+    to: buyerEmail,
+    subject: shippedTitle,
+    html: `<p>${shippedBody}</p>`,
+    text: shippedBody,
+  }).catch(() => {
+    // Best-effort notification — see markDelivered for the same pattern.
+  });
+  await notifyUser({
+    userId: updated.order.buyer.id,
+    type: "order_shipped",
+    title: shippedTitle,
+    body: shippedBody,
+    link: `/orders/${updated.orderId}`,
+  }).catch(() => {});
+
   return { ok: true };
 }
 

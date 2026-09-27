@@ -5,6 +5,7 @@ import { releaseSellerPayouts } from "@/server/services/payout-service";
 import { notifySellerLowStock } from "@/server/services/seller-service";
 import { purgeAbandonedCarts } from "@/server/services/cart-service";
 import { purgeOldNotifications } from "@/server/services/notification-service";
+import { sendReviewReminders } from "@/server/services/review-service";
 import { computeDailySalesRollup, yesterdayUTC } from "@/server/services/sales-rollup-service";
 import { sendEmail, type SendEmailInput } from "@/lib/email";
 import type { ImportMode } from "@/generated/prisma/enums";
@@ -87,4 +88,9 @@ export const purgeOldNotificationsFunction = inngest.createFunction(
 export const computeDailySalesRollupFunction = inngest.createFunction(
   { id: "compute-daily-sales-rollup", retries: 3, triggers: { cron: "0 1 * * *" } },
   async () => computeDailySalesRollup(yesterdayUTC())
+);
+
+export const sendReviewRemindersFunction = inngest.createFunction(
+  { id: "send-review-reminders", retries: 3, triggers: { cron: "0 9 * * *" } },
+  async () => sendReviewReminders()
 );

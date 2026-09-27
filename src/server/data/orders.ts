@@ -221,6 +221,25 @@ export function markPaymentFailed(orderId: string) {
   ]);
 }
 
+/** Buyer + per-seller recipients for the post-payment notification fan-out (order confirmed /
+ * payment failed for the buyer, new order received for each seller) — see order-service.ts. */
+export function getOrderForNotification(orderId: string) {
+  return prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      orderNumber: true,
+      buyer: { select: { id: true, email: true } },
+      sellerOrders: {
+        select: {
+          id: true,
+          seller: { select: { storeName: true, user: { select: { id: true, email: true } } } },
+        },
+      },
+    },
+  });
+}
+
 export function getOrdersForBuyer(buyerId: string, opts?: { page?: number }) {
   const page = opts?.page ?? 1;
   return prisma.order.findMany({

@@ -5,7 +5,7 @@ import {
   getPayoutEligibleOrdersForSeller,
   markSellerOrdersPaidOut,
 } from "@/server/data/seller-orders";
-import { getSellerProfileById } from "@/server/data/seller-profiles";
+import { getSellerProfileWithUserById } from "@/server/data/seller-profiles";
 import {
   createPayout,
   markPayoutPaid,
@@ -14,6 +14,9 @@ import {
   listPayoutsForAdmin,
 } from "@/server/data/payouts";
 import { createAuditLog } from "@/server/data/audit-log";
+import { queueEmail } from "@/lib/email";
+import { notifyUser } from "@/server/services/notification-service";
+import { formatPrice } from "@/lib/format";
 import { splitPage } from "@/lib/pagination";
 
 // The spec's "delaying payout until the return window closes" fraud mitigation, made concrete:
@@ -49,7 +52,7 @@ export async function releaseSellerPayouts(actorUserId: string | null = null): P
 
     const payout = await createPayout({ sellerId, periodStart, periodEnd, amount });
 
-    const seller = await getSellerProfileById(sellerId);
+    const seller = await getSellerProfileWithUserById(sellerId);
     const destination = seller?.stripeConnectAccountId;
 
     if (!destination) {
@@ -82,6 +85,23 @@ export async function releaseSellerPayouts(actorUserId: string | null = null): P
         entityId: payout.id,
         afterValue: { sellerId, amount: amount.toString(), stripeTransferId: transfer.id },
       });
+      if (seller) {
+        const payoutTitle = "Payout processed";
+        const payoutBody = `A payout of ${formatPrice(amount)} has been sent to your connected account.`;
+        await queueEmail({
+          to: seller.user.email,
+          subject: payoutTitle,
+          html: `<p>${payoutBody}</p>`,
+          text: payoutBody,
+        }).catch(() => {});
+        await notifyUser({
+          userId: seller.user.id,
+          type: "payout_processed",
+          title: payoutTitle,
+          body: payoutBody,
+          link: "/seller/payouts",
+        }).catch(() => {});
+      }
       summary.succeeded += 1;
     } catch {
       await markPayoutFailed(payout.id);
