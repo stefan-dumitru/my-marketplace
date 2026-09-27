@@ -29,6 +29,9 @@ export default async function SellerDashboardPage({ searchParams }: Props) {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{profile.storeName}</h1>
         <div className="flex items-center gap-3">
+          <Link href="/" className={buttonVariants({ variant: "outline" })}>
+            Back to marketplace
+          </Link>
           <Link href="/seller/orders" className={buttonVariants({ variant: "outline" })}>
             Orders
           </Link>

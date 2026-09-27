@@ -134,9 +134,14 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
           name="categoryId"
           control={control}
           render={({ field }) => (
-            <Select value={field.value} onValueChange={field.onChange}>
+            <Select value={field.value ?? ""} onValueChange={field.onChange}>
               <SelectTrigger id="categoryId" className="w-full" aria-invalid={!!errors.categoryId}>
-                <SelectValue placeholder="Select a category" />
+                {/* Base UI's SelectValue only resolves a label automatically when an `items` prop
+                    is passed to Select.Root — without it (as here), it renders the raw value, so
+                    the label lookup has to be done explicitly via the render-function form. */}
+                <SelectValue placeholder="Select a category">
+                  {(value: string | null) => categories.find((c) => c.id === value)?.name ?? "Select a category"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {categories.map((category) => (

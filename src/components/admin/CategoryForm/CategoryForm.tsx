@@ -122,9 +122,16 @@ export function CategoryForm({ categories, mode = "create", initialValues }: Pro
           name="parentId"
           control={control}
           render={({ field }) => (
-            <Select value={field.value || undefined} onValueChange={field.onChange}>
+            <Select value={field.value ?? ""} onValueChange={field.onChange}>
               <SelectTrigger id="parentId" className="w-full">
-                <SelectValue placeholder="No parent (top-level)" />
+                {/* Base UI's SelectValue only resolves a label automatically when an `items` prop
+                    is passed to Select.Root — without it (as here), it renders the raw value, so
+                    the label lookup has to be done explicitly via the render-function form. */}
+                <SelectValue placeholder="No parent (top-level)">
+                  {(value: string | null) =>
+                    parentOptions.find((c) => c.id === value)?.name ?? "No parent (top-level)"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {parentOptions.map((category) => (
