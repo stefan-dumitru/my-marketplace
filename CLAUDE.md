@@ -10,7 +10,7 @@ building. What you're building lives in [specifications/](specifications/SPECS.m
 - Framework(s): Next.js (App Router), React. API routes / Server Actions for the backend — no
   separate backend service.
 - Database: PostgreSQL, accessed exclusively through Prisma ORM (no raw SQL string concatenation)
-- Hosting / deployment target: Vercel for the app; managed PostgreSQL on Neon (built-in connection
+- Hosting / deployment target: Railway for the app; managed PostgreSQL on Neon (built-in connection
   pooling + point-in-time recovery — see [operations.md](specifications/operations.md)). Object
   storage (product images, seller logos) on Vercel Blob.
 - Key libraries you want defaulted to (avoid AI picking a random alternative):
@@ -42,8 +42,8 @@ building. What you're building lives in [specifications/](specifications/SPECS.m
 Applies to every feature by default, not just ones flagged "security-sensitive". Full,
 app-specific requirements live in [specifications/security.md](specifications/security.md).
 
-- No secrets in code or commit history; use `.env.local` locally (gitignored) and Vercel
-  environment variables per environment (development / preview / production) in deployment
+- No secrets in code or commit history; use `.env.local` locally (gitignored) and Railway
+  environment variables in the dashboard per deployment in production
 - Validate and sanitize all input at trust boundaries (API edges, form submissions) using a single
   Zod schema shared by client and server to prevent client/server rule drift
 - Default-deny authorization; check access on every request, not just at the UI layer
