@@ -12,6 +12,7 @@ import {
   getProductBySellerAndSku,
   getProductBySlug,
   listActiveProducts,
+  listDistinctActiveBrands,
   listPendingProductsForAdmin,
   listProductsForSeller as listProductsForSellerData,
   rejectProductForAdmin,
@@ -22,6 +23,7 @@ import { createAuditLog } from "@/server/data/audit-log";
 import { slugify } from "@/lib/slug";
 import { splitPage } from "@/lib/pagination";
 import { deleteImageIfManaged } from "@/server/services/upload-service";
+import { notifyAdmins } from "@/server/services/notification-service";
 
 export type CreateProductResult =
   | { ok: true }
@@ -74,6 +76,13 @@ export async function createProduct(
     price,
     stockQty,
   });
+
+  await notifyAdmins({
+    type: "product_pending_review",
+    title: "Product pending review",
+    body: `"${name}" was submitted and is waiting for moderation before it can go live.`,
+    link: "/admin/products",
+  }).catch(() => {});
 
   return { ok: true };
 }
@@ -135,8 +144,22 @@ export async function listProductsForSeller(sellerId: string, page?: number) {
   return { products: items, hasNextPage };
 }
 
-export function listActiveProductsForStorefront(opts?: { page?: number; q?: string; categorySlug?: string }) {
+export function listActiveProductsForStorefront(
+  opts?: {
+    page?: number;
+    q?: string;
+    categorySlug?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    brand?: string;
+    minRating?: number;
+  }
+) {
   return listActiveProducts(opts);
+}
+
+export function listActiveBrandsForStorefront() {
+  return listDistinctActiveBrands();
 }
 
 /**

@@ -233,6 +233,17 @@ const ACTIVE_PRODUCT_INCLUDE = {
   category: { select: { name: true, slug: true } },
 } as const;
 
+type ActiveProductFilters = {
+  categorySlug?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  brand?: string;
+  /** Product ids whose approved-review average already clears the requested rating floor —
+   * resolved once by the caller (see resolveRatingFilterProductIds) and intersected in here,
+   * since "average of a relation" isn't something a single findMany where-clause can express. */
+  ratingProductIds?: string[] | null;
+};
+
 /**
  * Ranked product ids for a free-text search, backed by Product.searchVector (a generated,
  * GIN-indexed tsvector column — see the "add_product_search_vector" migration). Category name is
@@ -242,13 +253,19 @@ const ACTIVE_PRODUCT_INCLUDE = {
  * Only raw SQL in this codebase — confined here, tagged-template parameterized (never
  * $queryRawUnsafe/string interpolation) per CLAUDE.md's no-raw-SQL-concatenation rule.
  */
-async function searchActiveProductIds(opts: {
-  q: string;
-  categorySlug?: string;
-  skip: number;
-  take: number;
-}): Promise<string[]> {
+async function searchActiveProductIds(
+  opts: { q: string; skip: number; take: number } & ActiveProductFilters
+): Promise<string[]> {
   const categorySlug = opts.categorySlug ?? null;
+  const brand = opts.brand ?? null;
+  const minPrice = opts.minPrice ?? null;
+  const maxPrice = opts.maxPrice ?? null;
+  // Prisma.$queryRaw binds a JS array as a real Postgres array parameter, so `= ANY(...)` works
+  // directly — no need to hand-build an IN (...) list. A null filter (rating not requested) is
+  // distinguished from an empty match list (rating requested, nothing qualifies) by this flag,
+  // since `ANY('{}')` and "filter not applied" must not be conflated.
+  const ratingFilterActive = opts.ratingProductIds != null;
+  const ratingProductIds = opts.ratingProductIds ?? [];
 
   const ftsRows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT p.id
@@ -256,6 +273,17 @@ async function searchActiveProductIds(opts: {
     JOIN categories c ON c.id = p."categoryId"
     WHERE p.status = 'active'::"ProductStatus"
       AND (${categorySlug}::text IS NULL OR c.slug = ${categorySlug})
+      AND (${brand}::text IS NULL OR p.brand = ${brand})
+      AND (${ratingFilterActive}::boolean = false OR p.id = ANY(${ratingProductIds}::text[]))
+      AND (
+        ${minPrice}::numeric IS NULL AND ${maxPrice}::numeric IS NULL
+        OR EXISTS (
+          SELECT 1 FROM product_variants pv
+          WHERE pv."productId" = p.id
+            AND (${minPrice}::numeric IS NULL OR pv.price >= ${minPrice}::numeric)
+            AND (${maxPrice}::numeric IS NULL OR pv.price <= ${maxPrice}::numeric)
+        )
+      )
       AND (
         p."searchVector" @@ websearch_to_tsquery('simple', ${opts.q})
         OR c.name ILIKE ${'%' + opts.q + '%'}
@@ -289,6 +317,17 @@ async function searchActiveProductIds(opts: {
       JOIN categories c ON c.id = p."categoryId"
       WHERE p.status = 'active'::"ProductStatus"
         AND (${categorySlug}::text IS NULL OR c.slug = ${categorySlug})
+        AND (${brand}::text IS NULL OR p.brand = ${brand})
+        AND (${ratingFilterActive}::boolean = false OR p.id = ANY(${ratingProductIds}::text[]))
+        AND (
+          ${minPrice}::numeric IS NULL AND ${maxPrice}::numeric IS NULL
+          OR EXISTS (
+            SELECT 1 FROM product_variants pv
+            WHERE pv."productId" = p.id
+              AND (${minPrice}::numeric IS NULL OR pv.price >= ${minPrice}::numeric)
+              AND (${maxPrice}::numeric IS NULL OR pv.price <= ${maxPrice}::numeric)
+          )
+        )
         AND ${opts.q} <% p.name
       ORDER BY word_similarity(${opts.q}, p.name) DESC
       OFFSET ${opts.skip}
@@ -300,16 +339,68 @@ async function searchActiveProductIds(opts: {
 
 const PRODUCTS_PAGE_SIZE = 24;
 
-export async function listActiveProducts(opts?: { page?: number; q?: string; categorySlug?: string }) {
+/** Distinct, non-null brand names across currently-active products, for the storefront filter dropdown. */
+export async function listDistinctActiveBrands(): Promise<string[]> {
+  const rows = await prisma.product.findMany({
+    where: { status: "active", brand: { not: null } },
+    select: { brand: true },
+    distinct: ["brand"],
+    orderBy: { brand: "asc" },
+  });
+  return rows.map((r) => r.brand!);
+}
+
+/**
+ * Resolves a minimum-average-rating filter to a concrete product id list, since neither a plain
+ * findMany where-clause nor the raw search query can express "this relation's average clears a
+ * threshold" directly. Only approved reviews count, matching getReviewSummaryForProduct's own
+ * definition of a product's rating everywhere else in the app.
+ */
+async function resolveRatingFilterProductIds(minRating: number): Promise<string[]> {
+  const grouped = await prisma.review.groupBy({
+    by: ["productId"],
+    where: { status: "approved" },
+    _avg: { rating: true },
+    having: { rating: { _avg: { gte: minRating } } },
+  });
+  return grouped.map((g) => g.productId);
+}
+
+export async function listActiveProducts(
+  opts?: { page?: number; q?: string; minRating?: number } & ActiveProductFilters
+) {
   const page = opts?.page ?? 1;
   const skip = (page - 1) * PRODUCTS_PAGE_SIZE;
   const take = PRODUCTS_PAGE_SIZE + 1;
+
+  const ratingProductIds = opts?.minRating ? await resolveRatingFilterProductIds(opts.minRating) : null;
+  // Short-circuit: nothing clears the rating bar, so neither query path below can match anything —
+  // the raw-SQL path's `= ANY('{}')` would correctly return zero rows too, but skipping straight
+  // to an empty result avoids a pointless query in the overwhelmingly common "no results" case.
+  if (ratingProductIds !== null && ratingProductIds.length === 0) {
+    return { products: [], hasNextPage: false };
+  }
+
+  const priceFilter =
+    opts?.minPrice !== undefined || opts?.maxPrice !== undefined
+      ? {
+          some: {
+            price: {
+              ...(opts?.minPrice !== undefined && { gte: opts.minPrice }),
+              ...(opts?.maxPrice !== undefined && { lte: opts.maxPrice }),
+            },
+          },
+        }
+      : undefined;
 
   if (!opts?.q) {
     const rows = await prisma.product.findMany({
       where: {
         status: "active",
         ...(opts?.categorySlug ? { category: { slug: opts.categorySlug } } : {}),
+        ...(opts?.brand ? { brand: opts.brand } : {}),
+        ...(priceFilter ? { variants: priceFilter } : {}),
+        ...(ratingProductIds ? { id: { in: ratingProductIds } } : {}),
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -320,7 +411,16 @@ export async function listActiveProducts(opts?: { page?: number; q?: string; cat
     return { products: split.items, hasNextPage: split.hasNextPage };
   }
 
-  const ids = await searchActiveProductIds({ q: opts.q, categorySlug: opts.categorySlug, skip, take });
+  const ids = await searchActiveProductIds({
+    q: opts.q,
+    categorySlug: opts.categorySlug,
+    brand: opts.brand,
+    minPrice: opts.minPrice,
+    maxPrice: opts.maxPrice,
+    ratingProductIds,
+    skip,
+    take,
+  });
   const { items: pageIds, hasNextPage } = splitPage(ids, PRODUCTS_PAGE_SIZE);
   if (pageIds.length === 0) return { products: [], hasNextPage: false };
 

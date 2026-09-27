@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listActiveProductsForStorefront } from "@/server/services/product-service";
+import { listActiveProductsForStorefront, listActiveBrandsForStorefront } from "@/server/services/product-service";
 import { listActiveCategories } from "@/server/data/categories";
 import { ProductCard } from "@/components/product/ProductCard";
 import { ProductFilterForm } from "@/components/product/ProductFilterForm";
@@ -14,19 +14,47 @@ import { parsePage } from "@/lib/pagination";
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ q?: string; category?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    category?: string;
+    page?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    brand?: string;
+    minRating?: string;
+  }>;
 };
 
-export default async function ProductsPage({ searchParams }: Props) {
-  const { q, category, page: pageParam } = await searchParams;
-  const page = parsePage(pageParam);
+/** A malformed/negative value is treated as "not set" rather than surfaced as a form error —
+ * this field only ever comes from a plain GET query string, not a validated form submission. */
+function parsePositiveNumber(value: string | undefined): number | undefined {
+  const n = Number(value);
+  return value && Number.isFinite(n) && n >= 0 ? n : undefined;
+}
 
-  const [{ products, hasNextPage }, categories] = await Promise.all([
-    listActiveProductsForStorefront({ page, q: q || undefined, categorySlug: category || undefined }),
+export default async function ProductsPage({ searchParams }: Props) {
+  const { q, category, page: pageParam, minPrice: minPriceParam, maxPrice: maxPriceParam, brand, minRating: minRatingParam } =
+    await searchParams;
+  const page = parsePage(pageParam);
+  const minPrice = parsePositiveNumber(minPriceParam);
+  const maxPrice = parsePositiveNumber(maxPriceParam);
+  const minRating = parsePositiveNumber(minRatingParam);
+
+  const [{ products, hasNextPage }, categories, brands] = await Promise.all([
+    listActiveProductsForStorefront({
+      page,
+      q: q || undefined,
+      categorySlug: category || undefined,
+      minPrice,
+      maxPrice,
+      brand: brand || undefined,
+      minRating,
+    }),
     listActiveCategories(),
+    listActiveBrandsForStorefront(),
   ]);
 
-  const hasFilters = Boolean(q || category);
+  const hasFilters = Boolean(q || category || minPrice !== undefined || maxPrice !== undefined || brand || minRating !== undefined);
 
   return (
     <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
@@ -34,8 +62,13 @@ export default async function ProductsPage({ searchParams }: Props) {
 
       <ProductFilterForm
         categories={categories.map((c) => ({ id: c.id, name: c.name, slug: c.slug }))}
+        brands={brands}
         q={q}
         category={category}
+        minPrice={minPriceParam}
+        maxPrice={maxPriceParam}
+        brand={brand}
+        minRating={minRatingParam}
       />
 
       {products.length === 0 ? (
@@ -61,7 +94,7 @@ export default async function ProductsPage({ searchParams }: Props) {
               page={page}
               hasNextPage={hasNextPage}
               basePath="/products"
-              extraParams={{ q, category }}
+              extraParams={{ q, category, minPrice: minPriceParam, maxPrice: maxPriceParam, brand, minRating: minRatingParam }}
             />
           </div>
         </>
