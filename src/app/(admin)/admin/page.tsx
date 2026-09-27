@@ -21,7 +21,7 @@ export default async function AdminHomePage() {
         <StatTile label="Active sellers" value={stats.activeSellers} />
         <StatTile label="Pending approvals" value={stats.pendingSellerApprovals} />
         <StatTile label="Orders today" value={stats.ordersToday} />
-        <StatTile label="Flagged reviews" value={stats.pendingReviews} />
+        <StatTile label="Reviews taken down" value={stats.takenDownReviews} />
       </div>
     </div>
   );

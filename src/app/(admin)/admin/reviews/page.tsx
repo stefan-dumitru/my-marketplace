@@ -1,4 +1,4 @@
-import { listPendingReviewsForAdmin } from "@/server/services/review-service";
+import { listReviewsForAdminModeration } from "@/server/services/review-service";
 import { ReviewModerationRow } from "@/components/admin/ReviewModerationRow";
 import { Card } from "@/components/ui/card";
 import { Pagination } from "@/components/shared/Pagination";
@@ -10,14 +10,18 @@ type Props = {
 
 export default async function AdminReviewsPage({ searchParams }: Props) {
   const page = parsePage((await searchParams).page);
-  const { reviews, hasNextPage } = await listPendingReviewsForAdmin(page);
+  const { reviews, hasNextPage } = await listReviewsForAdminModeration(page);
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Pending reviews</h1>
+      <h1 className="text-2xl font-semibold">Reviews</h1>
+      <p className="text-sm text-muted-foreground">
+        Reviews publish immediately — no approval needed. Take one down here if it&apos;s abusive
+        or fake; a taken-down review can be restored the same way.
+      </p>
 
       {reviews.length === 0 ? (
-        <Card className="p-6 text-sm text-muted-foreground">No pending reviews.</Card>
+        <Card className="p-6 text-sm text-muted-foreground">No reviews yet.</Card>
       ) : (
         <>
           <div className="flex flex-col gap-3">

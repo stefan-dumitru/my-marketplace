@@ -36,7 +36,7 @@ export async function getSellerDashboardStats(sellerId: string) {
 }
 
 export async function getAdminDashboardStats() {
-  const [gmv, activeSellers, pendingSellerApprovals, ordersToday, pendingReviews] = await Promise.all([
+  const [gmv, activeSellers, pendingSellerApprovals, ordersToday, takenDownReviews] = await Promise.all([
     prisma.order.aggregate({
       where: { status: "paid", createdAt: { gte: monthStart() } },
       _sum: { totalAmount: true },
@@ -44,7 +44,9 @@ export async function getAdminDashboardStats() {
     prisma.sellerProfile.count({ where: { status: "approved" } }),
     prisma.sellerProfile.count({ where: { status: "pending" } }),
     prisma.order.count({ where: { createdAt: { gte: dayStart() } } }),
-    prisma.review.count({ where: { status: "pending" } }),
+    // Reviews auto-approve on submission (see review-service.ts's submitReview) — there's no
+    // pre-publish backlog to flag anymore, so this now tracks post-publish moderation instead.
+    prisma.review.count({ where: { status: "rejected" } }),
   ]);
 
   return {
@@ -52,6 +54,6 @@ export async function getAdminDashboardStats() {
     activeSellers,
     pendingSellerApprovals,
     ordersToday,
-    pendingReviews,
+    takenDownReviews,
   };
 }

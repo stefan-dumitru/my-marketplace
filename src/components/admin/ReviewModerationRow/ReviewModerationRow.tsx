@@ -11,6 +11,7 @@ type Props = {
     rating: number;
     title: string;
     body: string;
+    status: "approved" | "rejected" | "pending";
     createdAt: Date;
     product: { name: string; slug: string };
     buyer: { name: string; email: string };
@@ -27,11 +28,14 @@ function SubmitButton({ variant, children }: { variant: "default" | "outline"; c
 }
 
 export function ReviewModerationRow({ review }: Props) {
+  const isRejected = review.status === "rejected";
+
   return (
     <Card className="flex flex-col gap-3 p-4 text-sm sm:flex-row sm:items-start sm:justify-between">
       <div className="flex flex-col gap-1">
         <p className="font-medium">
           {review.product.name} · {review.rating} / 5
+          {isRejected && <span className="ml-2 text-xs font-normal text-muted-foreground">(taken down)</span>}
         </p>
         <p className="text-muted-foreground">
           {review.buyer.name} · {review.buyer.email}
@@ -43,12 +47,15 @@ export function ReviewModerationRow({ review }: Props) {
         </p>
       </div>
       <div className="flex gap-2">
-        <form action={async () => { await approveReviewAction(review.id); }}>
-          <SubmitButton variant="default">Approve</SubmitButton>
-        </form>
-        <form action={async () => { await rejectReviewAction(review.id); }}>
-          <SubmitButton variant="outline">Reject</SubmitButton>
-        </form>
+        {isRejected ? (
+          <form action={async () => { await approveReviewAction(review.id); }}>
+            <SubmitButton variant="default">Restore</SubmitButton>
+          </form>
+        ) : (
+          <form action={async () => { await rejectReviewAction(review.id); }}>
+            <SubmitButton variant="outline">Take down</SubmitButton>
+          </form>
+        )}
       </div>
     </Card>
   );

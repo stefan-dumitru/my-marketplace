@@ -12,6 +12,7 @@ async function requireAdmin() {
   return session.user.id;
 }
 
+/** Restores a previously taken-down review (or is a no-op if it's already live). */
 export async function approveReviewAction(reviewId: string) {
   // Independently re-verified — this Action is its own entry point, not protected by the
   // (admin) layout's redirect just because the page that rendered its button was.
