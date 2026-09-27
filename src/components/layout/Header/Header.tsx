@@ -11,6 +11,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import type { UserRole } from "@/generated/prisma/enums";
 
 type Props = {
@@ -79,6 +80,7 @@ export function Header({ user }: Props) {
         <nav className="hidden items-center gap-2 lg:flex">
           {user && <NotificationsLink count={user.unreadNotificationCount} />}
           {user && <CartLink count={user.cartItemCount} />}
+          <ThemeToggle />
           {secondary && (
             <Link href={secondary.href} className={buttonVariants({ variant: "ghost" })}>
               {secondary.label}
@@ -98,6 +100,7 @@ export function Header({ user }: Props) {
         <div className="flex items-center gap-1 lg:hidden">
           {user && <NotificationsLink count={user.unreadNotificationCount} />}
           {user && <CartLink count={user.cartItemCount} />}
+          <ThemeToggle />
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger render={<Button variant="ghost" size="icon" />}>
               <Menu />
