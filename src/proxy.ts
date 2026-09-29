@@ -14,13 +14,19 @@ export function proxy(request: NextRequest) {
 
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    // challenges.cloudflare.com is Cloudflare Turnstile's script host — allowed by explicit host
+    // here as defense-in-depth even though the widget's own <script nonce={nonce}> tag (see
+    // TurnstileWidget) should already be trusted via 'strict-dynamic' on its own.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' https: data:",
     "font-src 'self'",
     // Product/category images are seller-supplied arbitrary HTTPS URLs rendered via plain <img>,
     // so img-src stays permissive for any HTTPS host rather than a fixed CDN allowlist.
-    `connect-src 'self'${isDev ? " ws://localhost:* http://localhost:*" : ""}`,
+    `connect-src 'self' https://challenges.cloudflare.com${isDev ? " ws://localhost:* http://localhost:*" : ""}`,
+    // Turnstile renders its challenge inside an iframe — with no frame-src directive this would
+    // otherwise fall back to default-src 'self' and silently block the widget.
+    "frame-src https://challenges.cloudflare.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

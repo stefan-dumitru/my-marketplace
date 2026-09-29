@@ -12,13 +12,19 @@ import { validateImageFile } from "@/lib/uploads";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TurnstileWidget } from "@/components/shared/TurnstileWidget";
 import { applySellerAction } from "@/app/(storefront)/sell/actions";
 
-export function SellerApplicationForm() {
+type Props = {
+  turnstile: { siteKey: string; nonce: string } | null;
+};
+
+export function SellerApplicationForm({ turnstile }: Props) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     register,
@@ -55,6 +61,7 @@ export function SellerApplicationForm() {
     formData.set("description", data.description ?? "");
     formData.set("businessRegistrationNumber", data.businessRegistrationNumber);
     if (logoFile) formData.set("logo", logoFile);
+    if (turnstileToken) formData.set("turnstileToken", turnstileToken);
 
     const result = await applySellerAction(formData);
 
@@ -129,7 +136,15 @@ export function SellerApplicationForm() {
         {logoError && <p className="text-sm text-destructive">{logoError}</p>}
       </div>
 
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
+      {turnstile && (
+        <TurnstileWidget
+          siteKey={turnstile.siteKey}
+          nonce={turnstile.nonce}
+          onVerify={setTurnstileToken}
+        />
+      )}
+
+      <Button type="submit" disabled={isSubmitting || (!!turnstile && !turnstileToken)} className="mt-2">
         {isSubmitting ? "Submitting…" : "Submit application"}
       </Button>
     </form>

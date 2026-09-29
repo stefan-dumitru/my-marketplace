@@ -3,12 +3,16 @@ import { auth } from "@/lib/auth";
 import { getSellerProfileByUserId } from "@/server/data/seller-profiles";
 import { SellerApplicationForm } from "@/components/seller/SellerApplicationForm";
 import { Card } from "@/components/ui/card";
+import { getTurnstileClientConfig } from "@/lib/turnstile";
 
 export default async function SellPage() {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/sell");
 
-  const profile = await getSellerProfileByUserId(session.user.id);
+  const [profile, turnstile] = await Promise.all([
+    getSellerProfileByUserId(session.user.id),
+    getTurnstileClientConfig(),
+  ]);
 
   if (profile?.status === "approved") redirect("/seller");
 
@@ -22,7 +26,7 @@ export default async function SellPage() {
             Tell us a bit about your business. We review every application before you can start
             listing products.
           </p>
-          <SellerApplicationForm />
+          <SellerApplicationForm turnstile={turnstile} />
         </>
       )}
 

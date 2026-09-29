@@ -34,3 +34,14 @@ export async function checkRateLimit(
   await prisma.rateLimitBucket.update({ where: { key }, data: { count: { increment: 1 } } });
   return { allowed: true };
 }
+
+/**
+ * Read-only peek at a bucket's current count within its active window — never mutates, unlike
+ * checkRateLimit. Used to gate CAPTCHA on login by prior-attempt count without double-counting
+ * against the same bucket checkRateLimit already tracks (see auth.ts's authorize()).
+ */
+export async function peekRateLimitCount(key: string): Promise<number> {
+  const bucket = await prisma.rateLimitBucket.findUnique({ where: { key } });
+  if (!bucket || bucket.windowEnds <= new Date()) return 0;
+  return bucket.count;
+}

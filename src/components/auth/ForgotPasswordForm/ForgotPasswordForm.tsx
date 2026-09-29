@@ -1,18 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { forgotPasswordSchema, type ForgotPasswordInput } from "@/lib/validations/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TurnstileWidget } from "@/components/shared/TurnstileWidget";
 import { forgotPasswordAction } from "@/app/(storefront)/auth/forgot-password/actions";
 
 type Props = {
   onSubmitted: () => void;
+  turnstile: { siteKey: string; nonce: string } | null;
 };
 
-export function ForgotPasswordForm({ onSubmitted }: Props) {
+export function ForgotPasswordForm({ onSubmitted, turnstile }: Props) {
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -20,9 +24,9 @@ export function ForgotPasswordForm({ onSubmitted }: Props) {
   } = useForm<ForgotPasswordInput>({ resolver: zodResolver(forgotPasswordSchema) });
 
   const onSubmit = async (data: ForgotPasswordInput) => {
-    await forgotPasswordAction(data);
-    // Always shows the same "check your email" state, whether or not the address exists — see
-    // forgotPasswordAction's no-enumeration comment.
+    await forgotPasswordAction(data, turnstileToken);
+    // Always shows the same "check your email" state, whether or not the address exists (or the
+    // CAPTCHA failed) — see forgotPasswordAction's no-enumeration comment.
     onSubmitted();
   };
 
@@ -40,7 +44,15 @@ export function ForgotPasswordForm({ onSubmitted }: Props) {
         {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
       </div>
 
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
+      {turnstile && (
+        <TurnstileWidget
+          siteKey={turnstile.siteKey}
+          nonce={turnstile.nonce}
+          onVerify={setTurnstileToken}
+        />
+      )}
+
+      <Button type="submit" disabled={isSubmitting || (!!turnstile && !turnstileToken)} className="mt-2">
         {isSubmitting ? "Sending…" : "Send reset link"}
       </Button>
     </form>

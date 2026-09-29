@@ -7,14 +7,17 @@ import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TurnstileWidget } from "@/components/shared/TurnstileWidget";
 import { registerAction } from "@/app/(storefront)/auth/register/actions";
 
 type Props = {
   onRegistered: (email: string) => void;
+  turnstile: { siteKey: string; nonce: string } | null;
 };
 
-export function RegisterForm({ onRegistered }: Props) {
+export function RegisterForm({ onRegistered, turnstile }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -24,7 +27,7 @@ export function RegisterForm({ onRegistered }: Props) {
 
   const onSubmit = async (data: RegisterInput) => {
     setFormError(null);
-    const result = await registerAction(data);
+    const result = await registerAction(data, turnstileToken);
 
     if (result.ok) {
       onRegistered(data.email);
@@ -82,7 +85,15 @@ export function RegisterForm({ onRegistered }: Props) {
         {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
       </div>
 
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
+      {turnstile && (
+        <TurnstileWidget
+          siteKey={turnstile.siteKey}
+          nonce={turnstile.nonce}
+          onVerify={setTurnstileToken}
+        />
+      )}
+
+      <Button type="submit" disabled={isSubmitting || (!!turnstile && !turnstileToken)} className="mt-2">
         {isSubmitting ? "Creating account…" : "Create account"}
       </Button>
     </form>

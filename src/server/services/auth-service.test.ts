@@ -101,7 +101,8 @@ describe("resetPassword", () => {
 
     expect(result.ok).toBe(true);
     const updated = await prisma.user.findUniqueOrThrow({ where: { id: buyer.id } });
-    expect(await bcrypt.compare(NEW_PASSWORD.password, updated.passwordHash)).toBe(true);
+    // Non-null: resetPassword always writes a real hash for a Credentials-registered buyer.
+    expect(await bcrypt.compare(NEW_PASSWORD.password, updated.passwordHash!)).toBe(true);
     expect(updated.sessionVersion).toBe(buyer.sessionVersion + 1);
   });
 

@@ -5,10 +5,17 @@ import { auth } from "@/lib/auth";
 import { sellerApplicationSchema } from "@/lib/validations/seller";
 import { applyForSellerAccount, type ApplyResult } from "@/server/services/seller-service";
 import { uploadImage } from "@/server/services/upload-service";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export async function applySellerAction(formData: FormData): Promise<ApplyResult> {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/sell");
+
+  const turnstileToken = formData.get("turnstileToken");
+  const captchaOk = await verifyTurnstileToken(typeof turnstileToken === "string" ? turnstileToken : null);
+  if (!captchaOk) {
+    return { ok: false, formError: "Verification failed. Please try again." };
+  }
 
   const parsed = sellerApplicationSchema.safeParse({
     storeName: formData.get("storeName"),

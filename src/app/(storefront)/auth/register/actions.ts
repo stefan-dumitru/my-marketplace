@@ -4,8 +4,15 @@ import { headers } from "next/headers";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { registerUser, type RegisterResult } from "@/server/services/auth-service";
 import { checkRateLimit } from "@/server/data/rate-limit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
-export async function registerAction(input: RegisterInput): Promise<RegisterResult> {
+// turnstileToken is a separate argument, not part of RegisterInput — it's verification
+// plumbing, not business data, same reasoning as the IP address below never being part of the
+// validated schema either.
+export async function registerAction(
+  input: RegisterInput,
+  turnstileToken?: string | null
+): Promise<RegisterResult> {
   const parsed = registerSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
@@ -14,6 +21,12 @@ export async function registerAction(input: RegisterInput): Promise<RegisterResu
   // IP-keyed, not email-keyed — there's no account yet to key by. Vercel sets x-forwarded-for;
   // local dev falls back to a shared bucket, which is fine for local testing.
   const ip = (await headers()).get("x-forwarded-for") ?? "unknown";
+
+  const captchaOk = await verifyTurnstileToken(turnstileToken, ip !== "unknown" ? ip : undefined);
+  if (!captchaOk) {
+    return { ok: false, formError: "Verification failed. Please try again." };
+  }
+
   const rateLimit = await checkRateLimit(`register:${ip}`, { limit: 10, windowSeconds: 3600 });
   if (!rateLimit.allowed) {
     return { ok: false, formError: "Too many attempts. Please try again in a few minutes." };
