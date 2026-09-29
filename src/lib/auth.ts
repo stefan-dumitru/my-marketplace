@@ -3,10 +3,11 @@ import { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
-import { getUserByEmail, getUserById, createUser } from "@/server/data/users";
+import { getUserByEmail, getUserById } from "@/server/data/users";
 import { checkRateLimit, peekRateLimitCount } from "@/server/data/rate-limit";
 import { loginSchema } from "@/lib/validations/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { resolveOAuthUser } from "@/server/services/auth-service";
 
 // A custom `code` (not the free-form message) is Auth.js's documented way to safely surface a
 // specific reason through the client-visible URL/response — see @auth/core's CredentialsSignin
@@ -166,20 +167,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 // link or create an account from it.
                 throw new Error("Google account email is not verified.");
               }
-              const email = profile.email.toLowerCase();
 
-              let user = await getUserByEmail(email);
-              if (!user) {
-                user = await createUser({
-                  email,
-                  name: profile.name ?? email,
-                  emailVerifiedAt: new Date(),
-                });
-              }
-
-              if (user.status === "suspended") {
-                throw new Error("Your account has been suspended. Contact support.");
-              }
+              const user = await resolveOAuthUser(profile.email, profile.name ?? profile.email);
 
               return {
                 id: user.id,

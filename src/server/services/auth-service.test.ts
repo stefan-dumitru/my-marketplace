@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { registerUser, requestPasswordReset, resetPassword } from "@/server/services/auth-service";
+import {
+  registerUser,
+  requestPasswordReset,
+  resetPassword,
+  resolveOAuthUser,
+} from "@/server/services/auth-service";
 import { checkRateLimit } from "@/server/data/rate-limit";
 import { createPasswordResetToken } from "@/server/data/password-reset-tokens";
 import { createBuyer } from "@test/helpers";
@@ -137,5 +142,40 @@ describe("resetPassword", () => {
     // The token must still be valid — a client-side validation failure shouldn't burn it.
     const stillThere = await prisma.passwordResetToken.findFirst({ where: { identifier: buyer.email, token } });
     expect(stillThere).not.toBeNull();
+  });
+});
+
+describe("resolveOAuthUser (Google sign-in's lookup-or-create — see lib/auth.ts's profile())", () => {
+  it("creates a new account with no password and an already-verified email", async () => {
+    const user = await resolveOAuthUser("new-oauth-buyer@example.com", "OAuth Buyer");
+
+    expect(user.passwordHash).toBeNull();
+    expect(user.emailVerifiedAt).not.toBeNull();
+    expect(user.role).toBe("buyer");
+    expect(await prisma.user.count({ where: { email: "new-oauth-buyer@example.com" } })).toBe(1);
+  });
+
+  it("links to an existing account with the same email instead of creating a duplicate", async () => {
+    const existing = await createBuyer();
+
+    const resolved = await resolveOAuthUser(existing.email, "Different Display Name");
+
+    expect(resolved.id).toBe(existing.id);
+    expect(await prisma.user.count({ where: { email: existing.email } })).toBe(1);
+  });
+
+  it("is case-insensitive on email, matching the existing account either way", async () => {
+    const existing = await createBuyer();
+
+    const resolved = await resolveOAuthUser(existing.email.toUpperCase(), "Someone");
+
+    expect(resolved.id).toBe(existing.id);
+  });
+
+  it("rejects a suspended account instead of logging it in", async () => {
+    const buyer = await createBuyer();
+    await prisma.user.update({ where: { id: buyer.id }, data: { status: "suspended" } });
+
+    await expect(resolveOAuthUser(buyer.email, buyer.name)).rejects.toThrow(/suspended/i);
   });
 });

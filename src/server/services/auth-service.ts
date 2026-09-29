@@ -83,6 +83,27 @@ export async function verifyEmailToken(email: string, token: string): Promise<bo
   return true;
 }
 
+/**
+ * Lookup-or-create for an OAuth sign-in (currently only Google — see lib/auth.ts's provider
+ * config). Kept here, not inline in the provider's profile() callback, so it's testable without
+ * going through Auth.js's own request/callback plumbing: this is the exact logic that decides
+ * account linking ("same email = same account, no duplicate row") and blocks a suspended account
+ * from signing back in via a different provider.
+ */
+export async function resolveOAuthUser(email: string, name: string) {
+  const normalizedEmail = email.toLowerCase();
+  let user = await getUserByEmail(normalizedEmail);
+  if (!user) {
+    user = await createUser({ email: normalizedEmail, name, emailVerifiedAt: new Date() });
+  }
+
+  if (user.status === "suspended") {
+    throw new Error("Your account has been suspended. Contact support.");
+  }
+
+  return user;
+}
+
 export type ResetPasswordResult =
   | { ok: true }
   | { ok: false; fieldErrors?: Partial<Record<keyof ResetPasswordInput, string>>; formError?: string };
