@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Menu, ShoppingCart } from "lucide-react";
+import { Bell, Heart, Menu, ShoppingCart } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -15,7 +15,12 @@ import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import type { UserRole } from "@/generated/prisma/enums";
 
 type Props = {
-  user: { role: UserRole; cartItemCount: number; unreadNotificationCount: number } | null;
+  user: {
+    role: UserRole;
+    cartItemCount: number;
+    wishlistItemCount: number;
+    unreadNotificationCount: number;
+  } | null;
 };
 
 function roleNav(user: Props["user"]) {
@@ -33,6 +38,21 @@ function CartLink({ count }: { count: number }) {
       </Button>
       {count > 0 && (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sale px-1 text-[10px] font-medium text-sale-foreground">
+          {count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function WishlistLink({ count }: { count: number }) {
+  return (
+    <Link href="/account/wishlist" className="relative inline-flex" aria-label="Wishlist">
+      <Button variant="ghost" size="icon">
+        <Heart />
+      </Button>
+      {count > 0 && (
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-background px-1 text-[10px] font-medium text-foreground">
           {count}
         </span>
       )}
@@ -79,6 +99,7 @@ export function Header({ user }: Props) {
         {/* Desktop nav: >1024px per ui-guidelines.md breakpoints */}
         <nav className="hidden items-center gap-2 lg:flex">
           {user && <NotificationsLink count={user.unreadNotificationCount} />}
+          {user && <WishlistLink count={user.wishlistItemCount} />}
           {user && <CartLink count={user.cartItemCount} />}
           <ThemeToggle />
           {secondary && (
@@ -99,6 +120,7 @@ export function Header({ user }: Props) {
         {/* Mobile/tablet nav: <1024px, hamburger trigger */}
         <div className="flex items-center gap-1 lg:hidden">
           {user && <NotificationsLink count={user.unreadNotificationCount} />}
+          {user && <WishlistLink count={user.wishlistItemCount} />}
           {user && <CartLink count={user.cartItemCount} />}
           <ThemeToggle />
           <Sheet open={open} onOpenChange={setOpen}>

@@ -1,0 +1,1 @@
+export { WishlistItemRow } from "./WishlistItemRow";

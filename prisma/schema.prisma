@@ -3,8 +3,11 @@
 // Note: Auth.js's Credentials provider never creates a database session (confirmed against
 // @auth/core's actual callback code, not just docs) — sessions are JWT-based, with a
 // `sessionVersion` counter here used to force-invalidate outstanding tokens server-side (see
-// src/lib/auth.ts). The Account/Session adapter tables aren't needed without an OAuth provider;
-// add them back if one is introduced later.
+// src/lib/auth.ts). Google OAuth (added alongside Credentials) is wired the same way, without an
+// Account/Session adapter table: its provider's own `profile()` callback does the lookup-or-
+// create against this same `users` table directly (see auth.ts), so a Google sign-in and a
+// password sign-in for the same email resolve to one User row with no separate linking table
+// needed.
 
 generator client {
   provider = "prisma-client"
@@ -29,7 +32,11 @@ enum UserStatus {
 model User {
   id              String     @id @default(cuid())
   email           String     @unique
-  passwordHash    String
+  // Nullable — an account created via Google OAuth has no password until/unless the user later
+  // sets one (no such flow exists yet). authorize() in auth.ts must null-check before comparing;
+  // an OAuth-only user attempting the Credentials form is rejected the same generic way a wrong
+  // password is, not a distinct error (no enumeration of which accounts are OAuth-only).
+  passwordHash    String?
   name            String
   phone           String?
   role            UserRole   @default(buyer)
@@ -49,6 +56,7 @@ model User {
 
   sellerProfile SellerProfile?
   cart          Cart?
+  wishlist      Wishlist?
   orders        Order[]
   reviews       Review[]
   auditLogs     AuditLog[]
@@ -155,7 +163,7 @@ model SellerProfile {
   approvedAt                 DateTime?
   suspendedAt                DateTime?
 
-  user          User          @relation(fields: [userId], references: [id])
+  user          User               @relation(fields: [userId], references: [id])
   products      Product[]
   sellerOrders  SellerOrder[]
   importBatches ImportBatch[]
@@ -216,7 +224,9 @@ model DailySellerSales {
   @@map("daily_seller_sales")
 }
 
-/** Platform-wide counterpart of DailySellerSales — one row per day, summed across every seller. */
+/**
+ * Platform-wide counterpart of DailySellerSales — one row per day, summed across every seller.
+ */
 model DailyPlatformSales {
   id               String   @id @default(cuid())
   date             DateTime @unique @db.Date
@@ -320,10 +330,11 @@ model Product {
   // Client, only ever queried via $queryRaw in products.ts's searchActiveProductIds.
   searchVector      Unsupported("tsvector")?
 
-  seller   SellerProfile    @relation(fields: [sellerId], references: [id])
-  category Category         @relation(fields: [categoryId], references: [id])
-  variants ProductVariant[]
-  reviews  Review[]
+  seller        SellerProfile    @relation(fields: [sellerId], references: [id])
+  category      Category         @relation(fields: [categoryId], references: [id])
+  variants      ProductVariant[]
+  reviews       Review[]
+  wishlistItems WishlistItem[]
 
   @@unique([sellerId, sku])
   @@index([sellerId])
@@ -332,13 +343,13 @@ model Product {
 }
 
 model ProductVariant {
-  id             String    @id @default(cuid())
-  productId      String
-  sku            String
-  attributes     Json      @default("{}")
-  price          Decimal   @db.Decimal(10, 2)
-  compareAtPrice Decimal?  @db.Decimal(10, 2)
-  stockQty       Int       @default(0)
+  id                String    @id @default(cuid())
+  productId         String
+  sku               String
+  attributes        Json      @default("{}")
+  price             Decimal   @db.Decimal(10, 2)
+  compareAtPrice    Decimal?  @db.Decimal(10, 2)
+  stockQty          Int       @default(0)
   // Set the moment stock first crosses at/under LOW_STOCK_THRESHOLD (see lib/constants.ts),
   // so the low-stock alert fires once per dip, not once per sale while it stays low. Cleared
   // back to null once the seller restocks above the threshold (see products.ts).
@@ -413,6 +424,34 @@ model CartItem {
   @@unique([cartId, productVariantId])
   @@index([cartId])
   @@map("cart_items")
+}
+
+// Unlike Cart/CartItem, a wishlist entry is product-level, not variant-level — it records
+// "the buyer wants this product," not a specific variant/quantity intent (that decision is
+// deferred to whenever they actually move it to the cart). No quantity field for the same reason.
+model Wishlist {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  updatedAt DateTime @updatedAt
+
+  user  User           @relation(fields: [userId], references: [id])
+  items WishlistItem[]
+
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  wishlistId String
+  productId  String
+  createdAt  DateTime @default(now())
+
+  wishlist Wishlist @relation(fields: [wishlistId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([wishlistId, productId])
+  @@index([wishlistId])
+  @@map("wishlist_items")
 }
 
 model Order {

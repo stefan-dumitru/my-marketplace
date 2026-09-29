@@ -17,18 +17,24 @@ export function listAdminUsers() {
 
 export function createUser(input: {
   email: string;
-  passwordHash: string;
+  // Omitted entirely for an OAuth-created account (see auth.ts's Google provider profile()) —
+  // there's nothing to hash since the user never set a password.
+  passwordHash?: string;
   name: string;
   phone?: string;
   role?: UserRole;
+  // Set immediately for an OAuth-created account — the provider already verified the email, so
+  // there's no separate verify-email step to run for it (see security.md > Authentication).
+  emailVerifiedAt?: Date;
 }) {
   return prisma.user.create({
     data: {
       email: input.email,
-      passwordHash: input.passwordHash,
+      passwordHash: input.passwordHash ?? null,
       name: input.name,
       phone: input.phone || null,
       role: input.role ?? "buyer",
+      emailVerifiedAt: input.emailVerifiedAt ?? null,
     },
   });
 }
@@ -109,6 +115,11 @@ export async function anonymizeUserById(userId: string, scrubbedPasswordHash: st
     if (cart) {
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
       await tx.cart.delete({ where: { id: cart.id } });
+    }
+    const wishlist = await tx.wishlist.findUnique({ where: { userId }, select: { id: true } });
+    if (wishlist) {
+      await tx.wishlistItem.deleteMany({ where: { wishlistId: wishlist.id } });
+      await tx.wishlist.delete({ where: { id: wishlist.id } });
     }
     // All three store the raw email in a column of their own.
     await tx.verificationToken.deleteMany({ where: { identifier: user.email } });

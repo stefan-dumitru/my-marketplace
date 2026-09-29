@@ -129,9 +129,12 @@ export default async function AccountPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <Link href="/orders" className={buttonVariants({ variant: "outline" })}>
           My orders
+        </Link>
+        <Link href="/account/wishlist" className={buttonVariants({ variant: "outline" })}>
+          Wishlist
         </Link>
         <Link href="/account/addresses" className={buttonVariants({ variant: "outline" })}>
           Manage addresses
