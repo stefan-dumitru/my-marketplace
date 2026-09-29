@@ -38,6 +38,16 @@ vi.mock("@vercel/blob", () => ({
   del: vi.fn(async () => {}),
 }));
 
+// @/lib/stripe constructs a real Stripe client at MODULE IMPORT time (throws immediately if
+// STRIPE_SECRET_KEY is unset — see that file), so any test file that transitively imports it
+// (seller-order-service.ts's refund calls in cancelSellerOrder/approveReturnRequest) would
+// otherwise either crash outright (no key configured, e.g. in CI) or — worse — silently place a
+// real call against Stripe's live API whenever a real key IS configured locally. Mocked
+// unconditionally, same reasoning as @vercel/blob above.
+vi.mock("@/lib/stripe", () => ({
+  stripe: { refunds: { create: vi.fn(async () => ({ id: "re_test_mock" })) } },
+}));
+
 // Must happen before any test file imports "@/lib/prisma" — that module reads
 // process.env.DATABASE_URL at call time (when its Prisma client is constructed), not at import
 // time, and Vitest runs setupFiles ahead of each test file's own module graph, so this reliably

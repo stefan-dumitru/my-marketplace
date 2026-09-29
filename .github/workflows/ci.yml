@@ -41,6 +41,11 @@ jobs:
       # authorize()/resetPassword hash real passwords with bcrypt even in tests — a throwaway
       # value is fine, nothing here is a real secret.
       AUTH_SECRET: ci-only-placeholder-not-a-real-secret
+      # src/lib/stripe.ts constructs a real Stripe client at MODULE IMPORT time and throws if this
+      # is unset — reachable from `next build` (the webhook route) even though nothing in CI ever
+      # calls Stripe for real (see vitest/setup.ts's mock for the test run's own Stripe calls).
+      # Confirmed locally: `next build` fails without this, succeeds with any well-formed value.
+      STRIPE_SECRET_KEY: sk_test_ci_placeholder_not_a_real_key
 
     steps:
       - uses: actions/checkout@v4
