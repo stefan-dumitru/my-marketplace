@@ -56,6 +56,13 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Generate Next.js types
+        # tsconfig.json's "include" references next-env.d.ts and .next/types/**/*.ts — both are
+        # gitignored and normally created the first time any `next` command runs. A fresh CI
+        # checkout has neither yet, so a bare `tsc --noEmit` fails before it even reaches this
+        # project's own code. `next typegen` creates just those files without a full build.
+        run: npx next typegen
+
       - name: Type-check
         run: npx tsc --noEmit
 
