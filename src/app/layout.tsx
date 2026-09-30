@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthSessionProvider } from "@/components/providers/AuthSessionProvider";
@@ -22,7 +23,13 @@ export const metadata: Metadata = {
   description: "A multi-vendor marketplace.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // next-themes injects its own inline anti-flash-of-wrong-theme script into <head> — without a
+  // nonce, proxy.ts's strict CSP blocks it outright (confirmed: showed up as a CSP violation +
+  // errors-in-console/best-practices Lighthouse failure on every single page). Same per-request
+  // nonce TurnstileWidget already reads off this header — see proxy.ts's x-nonce comment.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -30,7 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           <AuthSessionProvider>{children}</AuthSessionProvider>
           <Toaster />
         </ThemeProvider>

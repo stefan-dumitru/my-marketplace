@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 
 type Props = {
   images: string[];
@@ -13,10 +14,18 @@ export function ProductGallery({ images, alt }: Props) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="aspect-square w-full bg-muted">
+      <div className="relative aspect-square w-full bg-muted">
         {activeImage && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={activeImage} alt={alt} className="h-full w-full object-cover" />
+          <Image
+            src={activeImage}
+            alt={alt}
+            fill
+            sizes="(max-width: 640px) 100vw, 50vw"
+            // The main product image is almost always the LCP element on this page — preload it
+            // with fetchpriority=high instead of the default lazy-load.
+            priority
+            className="object-cover"
+          />
         )}
       </div>
 
@@ -29,12 +38,11 @@ export function ProductGallery({ images, alt }: Props) {
               onClick={() => setSelected(index)}
               aria-label={`Show image ${index + 1} of ${images.length}`}
               aria-current={index === selected}
-              className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
+              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
                 index === selected ? "border-primary" : "border-transparent"
               }`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={image} alt="" className="h-full w-full object-cover" />
+              <Image src={image} alt="" fill sizes="64px" className="object-cover" />
             </button>
           ))}
         </div>

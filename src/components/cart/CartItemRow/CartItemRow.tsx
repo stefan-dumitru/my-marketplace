@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPrice } from "@/lib/format";
@@ -42,11 +43,8 @@ export function CartItemRow({ item }: Props) {
 
   return (
     <div className="flex items-center gap-4 py-3">
-      <div className="h-16 w-16 shrink-0 bg-muted">
-        {image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt={product.name} className="h-full w-full object-cover" />
-        )}
+      <div className="relative h-16 w-16 shrink-0 bg-muted">
+        {image && <Image src={image} alt={product.name} fill sizes="64px" className="object-cover" />}
       </div>
 
       <div className="flex-1">
@@ -63,6 +61,7 @@ export function CartItemRow({ item }: Props) {
       <div className="flex items-center gap-2">
         <Input
           type="number"
+          aria-label={`Quantity for ${product.name}`}
           min={1}
           max={stockQty}
           value={quantity}

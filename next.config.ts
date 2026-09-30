@@ -11,6 +11,16 @@ const staticSecurityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [
+      // Demo/seed product images only — see prisma/scripts/seed-electronics.ts. Real seller
+      // uploads never go here (see the pattern below).
+      { protocol: "https", hostname: "images.unsplash.com" },
+      // Real product images and seller logos (src/server/services/upload-service.ts) — any
+      // store under this account resolves to a *.public.blob.vercel-storage.com subdomain.
+      { protocol: "https", hostname: "*.public.blob.vercel-storage.com" },
+    ],
+  },
   async headers() {
     return [
       {

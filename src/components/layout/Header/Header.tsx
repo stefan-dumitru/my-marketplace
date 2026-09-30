@@ -30,12 +30,25 @@ function roleNav(user: Props["user"]) {
   return { href: "/sell", label: "Sell on My Marketplace" };
 }
 
+/** count-badge suffix shared by the three icon links below, so the badge's visible text (just
+ *  the number) is always a substring of the link's accessible name — otherwise a screen reader's
+ *  name ("Cart") doesn't match what's visibly rendered ("1"), which axe/Lighthouse flag as
+ *  label-content-name-mismatch. */
+function countSuffix(count: number) {
+  return count > 0 ? `, ${count} ${count === 1 ? "item" : "items"}` : "";
+}
+
 function CartLink({ count }: { count: number }) {
   return (
-    <Link href="/cart" className="relative inline-flex" aria-label="Cart">
-      <Button variant="ghost" size="icon">
-        <ShoppingCart />
-      </Button>
+    // A single <Link>, not a <button> nested inside it — two nested interactive elements gave
+    // screen readers/Lighthouse's button-name audit a real <button> with no accessible name of
+    // its own (the aria-label lived only on the outer <a>).
+    <Link
+      href="/cart"
+      className={buttonVariants({ variant: "ghost", size: "icon", className: "relative" })}
+      aria-label={`Cart${countSuffix(count)}`}
+    >
+      <ShoppingCart />
       {count > 0 && (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sale px-1 text-[10px] font-medium text-sale-foreground">
           {count}
@@ -47,10 +60,12 @@ function CartLink({ count }: { count: number }) {
 
 function WishlistLink({ count }: { count: number }) {
   return (
-    <Link href="/account/wishlist" className="relative inline-flex" aria-label="Wishlist">
-      <Button variant="ghost" size="icon">
-        <Heart />
-      </Button>
+    <Link
+      href="/account/wishlist"
+      className={buttonVariants({ variant: "ghost", size: "icon", className: "relative" })}
+      aria-label={`Wishlist${countSuffix(count)}`}
+    >
+      <Heart />
       {count > 0 && (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-background px-1 text-[10px] font-medium text-foreground">
           {count}
@@ -62,10 +77,12 @@ function WishlistLink({ count }: { count: number }) {
 
 function NotificationsLink({ count }: { count: number }) {
   return (
-    <Link href="/notifications" className="relative inline-flex" aria-label="Notifications">
-      <Button variant="ghost" size="icon">
-        <Bell />
-      </Button>
+    <Link
+      href="/notifications"
+      className={buttonVariants({ variant: "ghost", size: "icon", className: "relative" })}
+      aria-label={`Notifications${countSuffix(count)}`}
+    >
+      <Bell />
       {count > 0 && (
         <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-background px-1 text-[10px] font-medium text-foreground">
           {count}

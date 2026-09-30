@@ -33,6 +33,7 @@ export function ProductFilterForm({ categories, brands, q, category, minPrice, m
       />
       <select
         name="category"
+        aria-label="Category"
         defaultValue={category ?? ""}
         onChange={(e) => e.currentTarget.form?.requestSubmit()}
         className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -54,6 +55,7 @@ export function ProductFilterForm({ categories, brands, q, category, minPrice, m
       </select>
       <select
         name="brand"
+        aria-label="Brand"
         defaultValue={brand ?? ""}
         onChange={(e) => e.currentTarget.form?.requestSubmit()}
         className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -69,6 +71,7 @@ export function ProductFilterForm({ categories, brands, q, category, minPrice, m
       </select>
       <select
         name="minRating"
+        aria-label="Minimum rating"
         defaultValue={minRating ?? ""}
         onChange={(e) => e.currentTarget.form?.requestSubmit()}
         className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"

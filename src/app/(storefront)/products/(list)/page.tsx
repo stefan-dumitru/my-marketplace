@@ -85,8 +85,11 @@ export default async function ProductsPage({ searchParams }: Props) {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
+            {products.map((product, i) => (
+              // First row (up to 4 cards, the widest breakpoint) is above the fold — priority
+              // preloads it with fetchpriority=high instead of the default lazy-load, which is
+              // what Lighthouse's LCP-discovery insight flagged as the biggest cost on this page.
+              <ProductCard key={product.id} product={product} priority={i < 4} />
             ))}
           </div>
           <div className="mt-6">

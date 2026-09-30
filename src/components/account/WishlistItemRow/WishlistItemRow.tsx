@@ -2,6 +2,7 @@
 
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatPrice } from "@/lib/format";
@@ -41,11 +42,8 @@ export function WishlistItemRow({ item }: Props) {
   return (
     <Card className="flex flex-col gap-3 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
-        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
-          {image && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={image} alt="" className="h-full w-full object-cover" />
-          )}
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
+          {image && <Image src={image} alt="" fill sizes="64px" className="object-cover" />}
         </div>
         <div>
           <Link href={`/products/${product.slug}`} className="font-medium hover:underline">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -184,8 +185,9 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
           <div className="flex flex-wrap gap-3">
             {existingImages.map((url) => (
               <div key={url} className="flex flex-col items-center gap-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="" className="h-20 w-20 rounded-md border border-border object-cover" />
+                <div className="relative h-20 w-20 overflow-hidden rounded-md border border-border">
+                  <Image src={url} alt="" fill sizes="80px" className="object-cover" />
+                </div>
                 <Button
                   type="button"
                   variant="outline"
