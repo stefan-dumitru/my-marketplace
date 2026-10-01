@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_PAGE_SIZE, splitPage } from "@/lib/pagination";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
+import { enqueueSearchSync } from "@/lib/search-sync";
 
 /**
  * Creates a Product and its single default ProductVariant in one nested-write Prisma call —
@@ -84,7 +85,7 @@ export async function updateProductForSeller(
   if (!owned) return null;
   const defaultVariantId = owned.variants[0]?.id;
 
-  return prisma.product.update({
+  const updated = await prisma.product.update({
     where: { id: productId },
     data: {
       categoryId: data.categoryId,
@@ -111,6 +112,8 @@ export async function updateProductForSeller(
     },
     include: { variants: true },
   });
+  await enqueueSearchSync({ productIds: [productId] });
+  return updated;
 }
 
 /**
@@ -131,7 +134,7 @@ export async function updateProductAttributesForSeller(
   const defaultVariantId = owned?.variants[0]?.id;
   if (!defaultVariantId) return null;
 
-  return prisma.productVariant.update({
+  const updated = await prisma.productVariant.update({
     where: { id: defaultVariantId },
     data: {
       price: data.price,
@@ -139,6 +142,8 @@ export async function updateProductAttributesForSeller(
       ...(data.stockQty > LOW_STOCK_THRESHOLD && { lowStockAlertedAt: null }),
     },
   });
+  await enqueueSearchSync({ productIds: [productId] });
+  return updated;
 }
 
 export async function setProductStatusForSeller(
@@ -152,13 +157,15 @@ export async function setProductStatusForSeller(
   });
   if (!owned) return null;
 
-  return prisma.product.update({
+  const updated = await prisma.product.update({
     where: { id: productId },
     data:
       status === "active"
         ? { status: "active", activatedAt: new Date() }
         : { status: "inactive", deactivatedAt: new Date() },
   });
+  await enqueueSearchSync({ productIds: [productId] });
+  return updated;
 }
 
 /**
@@ -213,10 +220,12 @@ async function setPendingProductStatus(productId: string, status: "active" | "re
   });
   if (!owned) return null;
 
-  return prisma.product.update({
+  const updated = await prisma.product.update({
     where: { id: productId },
     data: status === "active" ? { status: "active", activatedAt: new Date() } : { status: "rejected" },
   });
+  await enqueueSearchSync({ productIds: [productId] });
+  return updated;
 }
 
 export function approveProductForAdmin(productId: string) {
@@ -366,8 +375,16 @@ async function resolveRatingFilterProductIds(minRating: number): Promise<string[
   return grouped.map((g) => g.productId);
 }
 
+/** Optional external ranking (Meilisearch). Resolves to ranked product ids, or null when the
+ * external engine is unavailable — listActiveProducts then falls back to the Postgres query below.
+ * Injected rather than imported so this data-access layer never depends on a service. */
+export type ExternalRanker = (
+  args: { q: string; skip: number; take: number; minRating?: number } & Omit<ActiveProductFilters, "ratingProductIds">
+) => Promise<string[] | null>;
+
 export async function listActiveProducts(
-  opts?: { page?: number; q?: string; minRating?: number } & ActiveProductFilters
+  opts?: { page?: number; q?: string; minRating?: number } & ActiveProductFilters,
+  externalRanker?: ExternalRanker
 ) {
   const page = opts?.page ?? 1;
   const skip = (page - 1) * PRODUCTS_PAGE_SIZE;
@@ -411,7 +428,19 @@ export async function listActiveProducts(
     return { products: split.items, hasNextPage: split.hasNextPage };
   }
 
-  const ids = await searchActiveProductIds({
+  const externalIds = await externalRanker?.({
+    q: opts.q,
+    categorySlug: opts.categorySlug,
+    brand: opts.brand,
+    minPrice: opts.minPrice,
+    maxPrice: opts.maxPrice,
+    minRating: opts.minRating,
+    skip,
+    take,
+  });
+  const ids =
+    externalIds ??
+    (await searchActiveProductIds({
     q: opts.q,
     categorySlug: opts.categorySlug,
     brand: opts.brand,
@@ -420,7 +449,7 @@ export async function listActiveProducts(
     ratingProductIds,
     skip,
     take,
-  });
+  }));
   const { items: pageIds, hasNextPage } = splitPage(ids, PRODUCTS_PAGE_SIZE);
   if (pageIds.length === 0) return { products: [], hasNextPage: false };
 
@@ -471,7 +500,9 @@ export async function createVariantForProduct(
   const owned = await prisma.product.findFirst({ where: { id: productId, sellerId }, select: { id: true } });
   if (!owned) return null;
 
-  return prisma.productVariant.create({ data: { ...data, productId } });
+  const created = await prisma.productVariant.create({ data: { ...data, productId } });
+  await enqueueSearchSync({ productIds: [productId] });
+  return created;
 }
 
 export async function updateVariantForProduct(
@@ -486,7 +517,9 @@ export async function updateVariantForProduct(
   });
   if (!owned) return null;
 
-  return prisma.productVariant.update({ where: { id: variantId }, data });
+  const updated = await prisma.productVariant.update({ where: { id: variantId }, data });
+  await enqueueSearchSync({ productIds: [productId] });
+  return updated;
 }
 
 export async function deleteVariantForProduct(sellerId: string, productId: string, variantId: string) {
@@ -503,6 +536,7 @@ export async function deleteVariantForProduct(sellerId: string, productId: strin
     prisma.cartItem.deleteMany({ where: { productVariantId: variantId } }),
     prisma.productVariant.delete({ where: { id: variantId } }),
   ]);
+  await enqueueSearchSync({ productIds: [productId] });
   return deleted;
 }
 

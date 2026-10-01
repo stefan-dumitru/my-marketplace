@@ -42,12 +42,12 @@ export function CartItemRow({ item }: Props) {
   };
 
   return (
-    <div className="flex items-center gap-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
       <div className="relative h-16 w-16 shrink-0 bg-muted">
         {image && <Image src={image} alt={product.name} fill sizes="64px" className="object-cover" />}
       </div>
 
-      <div className="flex-1">
+      <div className="min-w-32 flex-1">
         <Link href={`/products/${product.slug}`} className="text-sm font-medium hover:underline">
           {product.name}
         </Link>
@@ -58,7 +58,7 @@ export function CartItemRow({ item }: Props) {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-2">
         <Input
           type="number"
           aria-label={`Quantity for ${product.name}`}

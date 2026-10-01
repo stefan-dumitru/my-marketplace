@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SearchAutocomplete } from "@/components/product/SearchAutocomplete";
 
 type Props = {
   categories: { id: string; name: string; slug: string }[];
@@ -25,12 +26,7 @@ const RATING_OPTIONS = [4, 3, 2, 1];
 export function ProductFilterForm({ categories, brands, q, category, minPrice, maxPrice, brand, minRating }: Props) {
   return (
     <form method="get" className="mb-6 flex flex-wrap items-center gap-2">
-      <Input
-        name="q"
-        defaultValue={q ?? ""}
-        placeholder="Search products…"
-        className="max-w-xs"
-      />
+      <SearchAutocomplete defaultValue={q ?? ""} />
       <select
         name="category"
         aria-label="Category"

@@ -7,6 +7,8 @@ import { purgeAbandonedCarts } from "@/server/services/cart-service";
 import { purgeOldNotifications } from "@/server/services/notification-service";
 import { sendReviewReminders } from "@/server/services/review-service";
 import { computeDailySalesRollup, yesterdayUTC } from "@/server/services/sales-rollup-service";
+import { reindexAllProducts, syncTarget } from "@/server/services/search-service";
+import type { SearchSyncTarget } from "@/lib/search-sync";
 import { sendEmail, type SendEmailInput } from "@/lib/email";
 import type { ImportMode } from "@/generated/prisma/enums";
 
@@ -93,4 +95,17 @@ export const computeDailySalesRollupFunction = inngest.createFunction(
 export const sendReviewRemindersFunction = inngest.createFunction(
   { id: "send-review-reminders", retries: 3, triggers: { cron: "0 9 * * *" } },
   async () => sendReviewReminders()
+);
+
+// Event-driven incremental sync (fired best-effort from the data layer on every product/seller/
+// category/review write — see enqueueSearchSync) plus a nightly full rebuild as the drift safety
+// net for any event that was dropped. 03:30 UTC, off-peak and clear of the other housekeeping jobs.
+export const syncSearchIndexFunction = inngest.createFunction(
+  { id: "sync-search-index", retries: 3, triggers: { event: "search/sync.requested" } },
+  async ({ event }) => syncTarget(event.data as SearchSyncTarget)
+);
+
+export const reindexAllProductsFunction = inngest.createFunction(
+  { id: "reindex-all-products", retries: 3, triggers: { cron: "30 3 * * *" } },
+  async () => reindexAllProducts()
 );

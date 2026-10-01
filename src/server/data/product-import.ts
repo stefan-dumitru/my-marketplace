@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { enqueueSearchSync } from "@/lib/search-sync";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ImportMode, ImportBatchStatus, ImportRecordAction } from "@/generated/prisma/enums";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
@@ -84,5 +85,6 @@ export async function deactivateProductsNotInSkuSet(sellerId: string, keepSkus: 
     where: { id: { in: toDeactivate.map((p) => p.id) } },
     data: { status: "inactive", deactivatedAt: new Date() },
   });
+  await enqueueSearchSync({ productIds: toDeactivate.map((p) => p.id) });
   return toDeactivate;
 }

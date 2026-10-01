@@ -92,6 +92,13 @@ rollups). This decides how it behaves when it fails.
   background job system rather than blocking or failing the action it's attached to.
 - **Object storage / Vercel Blob** (image uploads): if unreachable, only the specific upload
   action fails with a clear error; the rest of the app is unaffected.
+- **Meilisearch** (typo-tolerant search + autocomplete, optional): a derived copy of the catalog —
+  Postgres stays the source of truth. If it is unreachable, `/products?q=…` silently falls back to
+  the built-in Postgres full-text/trigram search and autocomplete returns nothing; search never
+  hard-fails. The index is kept fresh by best-effort `search/sync.requested` Inngest events fired
+  from the data layer on product/variant/review/category/seller writes, plus a nightly full
+  rebuild (03:30 UTC) as the drift safety net. `npm run search:reindex` rebuilds on demand (also the
+  initial backfill). Needs `MEILISEARCH_HOST` + `MEILISEARCH_API_KEY`; unset = feature off.
 - Timeout/retry policy: every external call has an explicit timeout (target: 10s) and a bounded
   retry count (2–3 attempts with backoff) — never an unbounded wait.
 - Circuit breaker / degradation: non-critical integrations (email) degrade gracefully — queue and

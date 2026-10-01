@@ -194,7 +194,7 @@ Europe/Bucharest — see that file).
   seller-specific `SellerOrder`s sharing one payment.
 - **Key fields:** id, orderNumber (unique, user-facing), buyerId (FK), status (aggregate, derived
   from its SellerOrders), totalAmount, currency, shippingAddressSnapshot (JSON, denormalized
-  copy — see Address above), createdAt
+  copy — see Address above), couponId?, couponCodeSnapshot?, discountAmount, createdAt
 - **Natural/external key:** `orderNumber` — the identifier shown to the buyer and used for
   support lookups.
 - **Relationships:** belongs to one `User` (buyer); has many `SellerOrder`; has one `Payment`
@@ -203,15 +203,16 @@ Europe/Bucharest — see that file).
 - **Bulk operations:** none — orders are never bulk-created/imported.
 - **Delete/cascade semantics:** immutable/permanent; no cascade delete path exists.
 - **Constraints / invariants:** `totalAmount` must equal the sum of its `SellerOrder.subtotal`
-  values plus shipping/fees.
+  values, minus `discountAmount`, plus shipping/fees. `discountAmount` and `couponCodeSnapshot`
+  are frozen at purchase time (a later edit/deactivation of the coupon never reprices an order).
 
 ### SellerOrder — Transactional
 
 - **Purpose:** The per-seller sub-order split out of an `Order`, since each seller fulfills and
   gets paid independently.
 - **Key fields:** id, orderId (FK), sellerId (FK), status (pending / confirmed / shipped /
-  delivered / cancelled / returned), subtotal, commissionAmount, payoutAmount, trackingNumber,
-  shippedAt, deliveredAt, cancelledAt
+  delivered / cancelled / returned), subtotal, discountAllocated, commissionAmount, payoutAmount,
+  trackingNumber, shippedAt, deliveredAt, cancelledAt
 - **Natural/external key:** none beyond the parent `Order.orderNumber`.
 - **Relationships:** belongs to one `Order`; belongs to one `SellerProfile`; has many `OrderItem`
 - **Lifecycle:** created alongside its parent `Order`. Status is advanced only by the owning
@@ -223,7 +224,12 @@ Europe/Bucharest — see that file).
 - **Delete/cascade semantics:** immutable/permanent, same as `Order`.
 - **Constraints / invariants:** `commissionAmount` is computed at creation time from the
   commission rate in effect then (seller override → category default → platform default) and
-  frozen — a later rate change never retroactively changes past orders.
+  frozen — a later rate change never retroactively changes past orders. `discountAllocated` is
+  this sub-order's pro-rata share of `Order.discountAmount` (largest-remainder rounding, so the
+  shares sum exactly to the order's discount). Coupons are platform-funded: `subtotal`,
+  `commissionAmount` and `payoutAmount` are identical with or without a coupon, and
+  `discountAllocated` exists only so a cancel/return refunds `subtotal − discountAllocated` —
+  what the buyer actually paid for that sub-order.
 
 ### OrderItem — Transactional
 
@@ -238,6 +244,25 @@ Europe/Bucharest — see that file).
 - **Bulk operations:** none.
 - **Delete/cascade semantics:** immutable/permanent.
 - **Constraints / invariants:** `lineTotal = unitPriceSnapshot * quantity`.
+
+### Coupon / CouponRedemption — Master / Transactional
+
+- **Purpose:** Admin-created, platform-funded promo codes (`Coupon`) and the record of each use
+  (`CouponRedemption`, one per order, unique on `orderId`).
+- **Key fields:** Coupon: code (unique, stored uppercase), type (percentage / fixed_amount), value,
+  minOrderAmount?, maxDiscountAmount?, startsAt?, expiresAt?, maxRedemptionsTotal?,
+  maxRedemptionsPerUser?, firstOrderOnly, isActive, redemptionCount, createdByUserId.
+  Redemption: couponId, userId, orderId, discountAmount.
+- **Lifecycle:** a buyer *selects* a code on their cart (`Cart.couponId`); it is re-validated on
+  every render and again inside the checkout transaction, which atomically reserves a redemption
+  (conditional `UPDATE` on `redemptionCount` — the real over-redemption guard, which also
+  row-locks the coupon so per-buyer limits can't be raced). A redemption is held for the life of
+  its order, including a `payment_failed` order that is still retryable — the same accepted
+  trade-off as stock, which is also not released on checkout expiry.
+- **Delete/cascade semantics:** coupons are never hard-deleted once redeemed — deactivate only.
+  `type` and `value` are locked after the first redemption; `code` is never editable.
+- **Constraints / invariants:** the payable total never drops below Stripe's minimum charge
+  (2.00 RON), so a discount can never strand a created order. Percentage ≤ 100.
 
 ### Payment — Transactional
 

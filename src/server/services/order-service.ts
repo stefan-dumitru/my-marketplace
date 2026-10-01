@@ -2,9 +2,11 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { stripe } from "@/lib/stripe";
 import { queueEmail } from "@/lib/email";
+import { COUPON_FAILURE_MESSAGE, toCents } from "@/lib/coupons";
 import { addressSchema, SHIPPING_COUNTRY, type AddressInput } from "@/lib/validations/checkout";
 import { requestReturnSchema, type RequestReturnInput } from "@/lib/validations/return-request";
 import { getCartWithItems, clearCartItems } from "@/server/data/cart";
+import { setCartCoupon } from "@/server/data/coupons";
 import {
   createOrderFromCart,
   getOrderByIdForBuyer,
@@ -28,6 +30,9 @@ function baseUrl() {
 
 async function createStripeSessionForOrder(order: {
   id: string;
+  totalAmount: unknown;
+  discountAmount: unknown;
+  couponCodeSnapshot: string | null;
   sellerOrders: { items: { productNameSnapshot: string; unitPriceSnapshot: unknown; quantity: number }[] }[];
 }) {
   const lineItems = order.sellerOrders.flatMap((so) =>
@@ -41,9 +46,30 @@ async function createStripeSessionForOrder(order: {
     }))
   );
 
+  // The discount goes to Stripe as a one-off fixed-amount coupon (Checkout can't take a negative
+  // line item), so the amount Stripe charges equals Order.totalAmount to the cent. The order's own
+  // frozen discountAmount is the source of truth — never the live Coupon row, which may have been
+  // edited or deactivated since checkout started.
+  const discountCents = toCents(Number(order.discountAmount));
+  const grossCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0);
+  if (grossCents - discountCents !== toCents(Number(order.totalAmount))) {
+    throw new Error(`Order ${order.id}: line items minus discount don't match the stored total`);
+  }
+  const stripeCoupon =
+    discountCents > 0
+      ? await stripe.coupons.create({
+          amount_off: discountCents,
+          currency: "ron",
+          duration: "once",
+          max_redemptions: 1,
+          name: order.couponCodeSnapshot ?? "Discount",
+        })
+      : null;
+
   return stripe.checkout.sessions.create({
     mode: "payment",
     line_items: lineItems,
+    ...(stripeCoupon ? { discounts: [{ coupon: stripeCoupon.id }] } : {}),
     success_url: `${baseUrl()}/checkout/success?orderId=${order.id}`,
     cancel_url: `${baseUrl()}/checkout/failed?orderId=${order.id}`,
     metadata: { orderId: order.id },
@@ -62,10 +88,20 @@ export async function checkoutCart(userId: string, buyerEmail: string, address: 
     buyerId: userId,
     items: items.map((i) => ({ productVariantId: i.productVariantId, quantity: i.quantity })),
     shippingAddressSnapshot: { ...parsed.data, country: SHIPPING_COUNTRY },
+    couponId: cart.couponId,
   });
 
   if (!result.ok) {
     if (result.reason === "empty_cart") return { ok: false, formError: "Your cart is empty." };
+    if (result.reason === "coupon_invalid") {
+      // The code stopped being valid between "Apply" and "Pay" — drop it so the buyer sees the
+      // real, undiscounted total on the next render instead of retrying into the same failure.
+      await setCartCoupon(cart.id, null);
+      return {
+        ok: false,
+        formError: `${COUPON_FAILURE_MESSAGE[result.couponReason]} Your code was removed — review your total and try again.`,
+      };
+    }
     if (result.reason === "product_unavailable") {
       return { ok: false, formError: `"${result.productName}" is no longer available. Please remove it from your cart.` };
     }

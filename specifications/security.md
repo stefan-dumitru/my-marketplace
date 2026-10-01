@@ -89,6 +89,26 @@ Relevant here: product images, seller store logos, (optionally) user avatars.
   creating) the target `Product`/`SellerProfile` *before* accepting the upload into storage, not
   after; an unauthorized upload attempt never reaches the storage provider.
 
+## Search
+
+- Meilisearch is only ever contacted server-side; its API key is a server env var and the
+  browser talks solely to `GET /api/search/suggest`, which is rate-limited per IP (120/min),
+  validates its query with Zod (2–64 chars), and returns only fields the storefront already shows
+  publicly. In production use a search-only API key, not the master key.
+- Any value from the URL that reaches a Meilisearch filter expression (category, brand) is quoted
+  and escaped (`quote()` in search-service.ts) — filter injection is covered by a test.
+
+## Coupons
+
+- Applying a code is rate-limited per user (10 attempts / 10 minutes) — guessing valid codes is the
+  attack, so the limiter keys on the account, not the IP. An unknown code and a deactivated code
+  return the identical message so a probe can't tell them apart.
+- The cart only stores a *selection*; eligibility is re-checked inside the checkout transaction,
+  and the discount charged to Stripe comes from the order's own frozen `discountAmount`, never
+  from the live coupon row.
+- Coupon create/edit/activate/deactivate are admin-only server actions, re-validated server-side
+  with the shared Zod schema, and each writes an `AuditLog` row.
+
 ## Threat Model (lightweight)
 
 - Biggest realistic threat: marketplace-specific fraud — a bad-faith seller listing products,

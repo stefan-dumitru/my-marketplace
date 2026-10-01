@@ -10,7 +10,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-10">
-      <nav className="flex gap-2">
+      <nav className="flex flex-wrap gap-2">
         <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
           Dashboard
         </Link>
@@ -25,6 +25,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         </Link>
         <Link href="/admin/categories" className={buttonVariants({ variant: "outline", size: "sm" })}>
           Categories
+        </Link>
+        <Link href="/admin/coupons" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Coupons
         </Link>
         <Link href="/admin/payouts" className={buttonVariants({ variant: "outline", size: "sm" })}>
           Payouts

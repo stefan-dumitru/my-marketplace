@@ -5,6 +5,13 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { inngest } from "@/lib/inngest";
 import { logger } from "@/lib/logger";
+import { allocateDiscountCents, evaluateCoupon, fromCents, toCents, type CouponFailure } from "@/lib/coupons";
+import {
+  couponToRules,
+  getCouponById,
+  getCouponUsageForUser,
+  reserveCouponRedemption,
+} from "@/server/data/coupons";
 
 const ORDER_INCLUDE = {
   sellerOrders: {
@@ -28,6 +35,14 @@ class CheckoutError extends Error {
   }
 }
 
+/** Internal — a coupon that stopped being valid between "Apply" and "Pay". Throwing from inside
+ * the transaction is what rolls back the stock decrement and the redemption reservation with it. */
+class CouponRejectedError extends Error {
+  constructor(public couponReason: CouponFailure) {
+    super(couponReason);
+  }
+}
+
 async function generateUniqueOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const candidate = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random()
@@ -43,6 +58,7 @@ async function generateUniqueOrderNumber(tx: Prisma.TransactionClient): Promise<
 export type CreateOrderFromCartResult =
   | { ok: true; order: NonNullable<Awaited<ReturnType<typeof getOrderByIdForBuyer>>> }
   | { ok: false; reason: "empty_cart" }
+  | { ok: false; reason: "coupon_invalid"; couponReason: CouponFailure }
   | { ok: false; reason: "product_unavailable"; productName: string }
   | { ok: false; reason: "insufficient_stock"; productName: string; available: number };
 
@@ -58,6 +74,8 @@ export async function createOrderFromCart(input: {
   buyerId: string;
   items: { productVariantId: string; quantity: number }[];
   shippingAddressSnapshot: Prisma.InputJsonValue;
+  /** Optional promo code selection. Never trusted: re-validated and reserved in the transaction. */
+  couponId?: string | null;
 }): Promise<CreateOrderFromCartResult> {
   if (input.items.length === 0) return { ok: false, reason: "empty_cart" };
 
@@ -168,7 +186,46 @@ export async function createOrderFromCart(input: {
         };
       });
 
-      const totalAmount = sellerOrdersData.reduce((sum, so) => sum + so.subtotal, 0);
+      // All discount math is integer cents (see lib/coupons.ts) so what we store, what Stripe
+      // charges and what a later refund returns can never disagree by a rounding cent.
+      const subtotalsCents = sellerOrdersData.map((so) => toCents(so.subtotal));
+      const subtotalCents = subtotalsCents.reduce((a, b) => a + b, 0);
+
+      let discountCents = 0;
+      let couponCodeSnapshot: string | null = null;
+      if (input.couponId) {
+        const coupon = await getCouponById(input.couponId, tx);
+        if (!coupon) throw new CouponRejectedError("inactive");
+
+        // Reserve BEFORE reading per-user usage: this UPDATE is the atomic total-limit guard and
+        // also row-locks the coupon, serializing concurrent redeemers so the per-user count below
+        // can't be raced.
+        const reserved = await reserveCouponRedemption(tx, coupon.id);
+        const usage = await getCouponUsageForUser(coupon.id, input.buyerId, tx);
+        const evaluation = evaluateCoupon(couponToRules(coupon), {
+          subtotalCents,
+          now: new Date(),
+          ...usage,
+        });
+        if (!reserved) {
+          // Lost the race (or expired/deactivated since it was loaded) — say why, if we can.
+          const fresh = (await getCouponById(coupon.id, tx)) ?? coupon;
+          const freshEvaluation = evaluateCoupon(couponToRules(fresh), { subtotalCents, now: new Date(), ...usage });
+          throw new CouponRejectedError(freshEvaluation.ok ? "limit_reached" : freshEvaluation.reason);
+        }
+        if (!evaluation.ok) throw new CouponRejectedError(evaluation.reason);
+
+        discountCents = evaluation.discountCents;
+        couponCodeSnapshot = coupon.code;
+      }
+
+      const allocations = allocateDiscountCents(discountCents, subtotalsCents);
+      const sellerOrdersCreate = sellerOrdersData.map((so, i) => ({
+        ...so,
+        discountAllocated: fromCents(allocations[i]),
+      }));
+
+      const totalAmount = fromCents(subtotalCents - discountCents);
       const orderNumber = await generateUniqueOrderNumber(tx);
 
       const created = await tx.order.create({
@@ -176,8 +233,18 @@ export async function createOrderFromCart(input: {
           orderNumber,
           buyerId: input.buyerId,
           totalAmount,
+          discountAmount: fromCents(discountCents),
           shippingAddressSnapshot: input.shippingAddressSnapshot,
-          sellerOrders: { create: sellerOrdersData },
+          ...(input.couponId && couponCodeSnapshot
+            ? {
+                couponId: input.couponId,
+                couponCodeSnapshot,
+                couponRedemption: {
+                  create: { couponId: input.couponId, userId: input.buyerId, discountAmount: fromCents(discountCents) },
+                },
+              }
+            : {}),
+          sellerOrders: { create: sellerOrdersCreate },
           payment: { create: { amount: totalAmount, status: "pending" } },
         },
       });
@@ -197,6 +264,9 @@ export async function createOrderFromCart(input: {
     const order = await getOrderByIdForBuyer(input.buyerId, orderResult.orderId);
     return { ok: true, order: order! };
   } catch (err) {
+    if (err instanceof CouponRejectedError) {
+      return { ok: false, reason: "coupon_invalid", couponReason: err.couponReason };
+    }
     if (err instanceof CheckoutError) {
       return { ok: false, reason: err.reason, productName: err.productName, available: err.available } as CreateOrderFromCartResult;
     }

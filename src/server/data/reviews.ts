@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { enqueueSearchSync } from "@/lib/search-sync";
 import type { ReviewStatus } from "@/generated/prisma/enums";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
@@ -45,7 +46,7 @@ export function findOrderItemsNeedingReviewReminder(dayStart: Date, dayEnd: Date
   });
 }
 
-export function createReview(data: {
+export async function createReview(data: {
   productId: string;
   buyerId: string;
   orderItemId: string;
@@ -55,7 +56,10 @@ export function createReview(data: {
 }) {
   // Explicit rather than relying on the schema default alone — this line is the actual
   // "no admin approval gate" decision, so it shouldn't be implicit.
-  return prisma.review.create({ data: { ...data, status: "approved" } });
+  const created = await prisma.review.create({ data: { ...data, status: "approved" } });
+  // A new approved review changes the product's average rating, which the search index filters on.
+  await enqueueSearchSync({ productIds: [data.productId] });
+  return created;
 }
 
 export function listApprovedReviewsForProduct(productId: string) {
@@ -105,5 +109,8 @@ export async function setReviewStatus(reviewId: string, status: Extract<ReviewSt
     where: { id: reviewId, status: { not: status } },
     data: { status },
   });
-  return result.count === 1;
+  if (result.count !== 1) return false;
+  const review = await prisma.review.findUnique({ where: { id: reviewId }, select: { productId: true } });
+  if (review) await enqueueSearchSync({ productIds: [review.productId] });
+  return true;
 }

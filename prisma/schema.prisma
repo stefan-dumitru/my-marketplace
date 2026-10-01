@@ -54,14 +54,16 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  sellerProfile SellerProfile?
-  cart          Cart?
-  wishlist      Wishlist?
-  orders        Order[]
-  reviews       Review[]
-  auditLogs     AuditLog[]
-  addresses     Address[]
-  notifications Notification[]
+  sellerProfile     SellerProfile?
+  cart              Cart?
+  wishlist          Wishlist?
+  orders            Order[]
+  reviews           Review[]
+  auditLogs         AuditLog[]
+  addresses         Address[]
+  notifications     Notification[]
+  couponsCreated    Coupon[]
+  couponRedemptions CouponRedemption[]
 
   @@map("users")
 }
@@ -399,10 +401,14 @@ enum PaymentStatus {
 model Cart {
   id        String   @id @default(cuid())
   userId    String   @unique
+  // The promo code the buyer applied on the cart page. Only a *selection* — it is re-validated on
+  // every render and again inside the checkout transaction, never trusted as already-valid.
+  couponId  String?
   updatedAt DateTime @updatedAt
 
-  user  User       @relation(fields: [userId], references: [id])
-  items CartItem[]
+  user   User       @relation(fields: [userId], references: [id])
+  coupon Coupon?    @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items  CartItem[]
 
   @@map("carts")
 }
@@ -459,39 +465,53 @@ model Order {
   orderNumber             String      @unique
   buyerId                 String
   status                  OrderStatus @default(pending_payment)
+  // What the buyer actually pays: Σ SellerOrder.subtotal − discountAmount. Platform-funded coupons
+  // never touch SellerOrder.subtotal/commission/payout, so sellers are paid exactly as if no
+  // coupon had been used — the platform absorbs the discount out of its own margin.
   totalAmount             Decimal     @db.Decimal(10, 2)
   currency                String      @default("RON")
   shippingAddressSnapshot Json
+  couponId                String?
+  // Frozen at purchase time, like every other snapshot on an order — renaming/deactivating the
+  // coupon later must not change what this order says it used.
+  couponCodeSnapshot      String?
+  discountAmount          Decimal     @default(0) @db.Decimal(10, 2)
   createdAt               DateTime    @default(now())
 
-  buyer        User          @relation(fields: [buyerId], references: [id])
-  sellerOrders SellerOrder[]
-  payment      Payment?
+  buyer            User              @relation(fields: [buyerId], references: [id])
+  coupon           Coupon?           @relation(fields: [couponId], references: [id])
+  couponRedemption CouponRedemption?
+  sellerOrders     SellerOrder[]
+  payment          Payment?
 
   @@index([buyerId])
   @@map("orders")
 }
 
 model SellerOrder {
-  id               String            @id @default(cuid())
-  orderId          String
-  sellerId         String
-  status           SellerOrderStatus @default(pending)
-  subtotal         Decimal           @db.Decimal(10, 2)
-  commissionAmount Decimal           @db.Decimal(10, 2)
-  payoutAmount     Decimal           @default(0) @db.Decimal(10, 2)
-  trackingNumber   String?
-  shippedAt        DateTime?
-  deliveredAt      DateTime?
-  cancelledAt      DateTime?
+  id                String            @id @default(cuid())
+  orderId           String
+  sellerId          String
+  status            SellerOrderStatus @default(pending)
+  subtotal          Decimal           @db.Decimal(10, 2)
+  // This sub-order's share of Order.discountAmount (allocated pro rata to subtotal, summing
+  // exactly to the order discount). Not seller-funded: used only to refund the buyer what they
+  // actually paid for this sub-order on cancel/return — see seller-order-service.ts.
+  discountAllocated Decimal           @default(0) @db.Decimal(10, 2)
+  commissionAmount  Decimal           @db.Decimal(10, 2)
+  payoutAmount      Decimal           @default(0) @db.Decimal(10, 2)
+  trackingNumber    String?
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  cancelledAt       DateTime?
   // Distinct from cancelledAt so a cancel retry can tell "DB side done" from "refund still
   // pending" and only redo the Stripe call, not the stock release — see seller-order-service.ts.
-  refundedAt       DateTime?
-  payoutAt         DateTime?
+  refundedAt        DateTime?
+  payoutAt          DateTime?
   // Legacy: the pre-Payout-model release flow set this per order. No longer written to — a
   // paid-out order's transfer now lives on the Payout row that covers it (see Payout above);
   // this column is kept only so historical pre-migration rows aren't lost.
-  stripeTransferId String?
+  stripeTransferId  String?
 
   order         Order          @relation(fields: [orderId], references: [id])
   seller        SellerProfile  @relation(fields: [sellerId], references: [id])
@@ -630,4 +650,61 @@ model RateLimitBucket {
   windowEnds DateTime
 
   @@map("rate_limit_buckets")
+}
+
+enum CouponType {
+  percentage
+  fixed_amount
+}
+
+// Admin-created, platform-funded promo codes (see specifications/release-3.md §2). Whole-cart
+// scope only in v1 — no per-product/category/seller targeting.
+model Coupon {
+  id                    String     @id @default(cuid())
+  // Stored uppercase; lookups uppercase their input, so codes are case-insensitive.
+  code                  String     @unique
+  type                  CouponType
+  // percentage: 0–100 (percent). fixed_amount: RON.
+  value                 Decimal    @db.Decimal(10, 2)
+  minOrderAmount        Decimal?   @db.Decimal(10, 2)
+  // Cap for percentage codes (a 50% code on a 5,000 RON cart shouldn't be unbounded).
+  maxDiscountAmount     Decimal?   @db.Decimal(10, 2)
+  startsAt              DateTime?
+  expiresAt             DateTime?
+  maxRedemptionsTotal   Int?
+  maxRedemptionsPerUser Int?
+  firstOrderOnly        Boolean    @default(false)
+  isActive              Boolean    @default(true)
+  // Incremented atomically inside the checkout transaction (conditional UPDATE) — the actual
+  // guard against over-redeeming under concurrency. Equals the number of CouponRedemption rows.
+  redemptionCount       Int        @default(0)
+  createdByUserId       String
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  createdBy   User               @relation(fields: [createdByUserId], references: [id])
+  redemptions CouponRedemption[]
+  orders      Order[]
+  carts       Cart[]
+
+  @@index([isActive])
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  id             String   @id @default(cuid())
+  couponId       String
+  userId         String
+  // One order can redeem at most one coupon (v1), and unique makes a double-insert impossible.
+  orderId        String   @unique
+  discountAmount Decimal  @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  order  Order  @relation(fields: [orderId], references: [id])
+
+  @@index([couponId])
+  @@index([userId, couponId])
+  @@map("coupon_redemptions")
 }

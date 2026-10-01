@@ -16,8 +16,9 @@ export default async function AdminHomePage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatTile label="GMV this month" value={formatPrice(stats.gmvThisMonth)} />
+        <StatTile label="Discounts given" value={formatPrice(stats.discountsThisMonth)} />
         <StatTile label="Active sellers" value={stats.activeSellers} />
         <StatTile label="Pending approvals" value={stats.pendingSellerApprovals} />
         <StatTile label="Orders today" value={stats.ordersToday} />

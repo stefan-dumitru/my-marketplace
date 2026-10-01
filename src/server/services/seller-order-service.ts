@@ -15,6 +15,15 @@ import { createAuditLog } from "@/server/data/audit-log";
 import { getSellerDashboardStats } from "@/server/data/dashboard";
 import { notifyUser } from "@/server/services/notification-service";
 import { splitPage } from "@/lib/pagination";
+import { toCents, fromCents } from "@/lib/coupons";
+
+/** What the buyer actually paid for this sub-order: its subtotal minus its share of any coupon
+ * discount. Sellers' payouts are NOT reduced by coupons (platform-funded), but a refund must never
+ * hand back more than was charged — across all of an order's sub-orders these sum to exactly the
+ * amount Stripe collected. */
+function paidCents(so: { subtotal: unknown; discountAllocated: unknown }) {
+  return toCents(Number(so.subtotal)) - toCents(Number(so.discountAllocated));
+}
 
 export type ShipOrderResult =
   | { ok: true }
@@ -186,7 +195,7 @@ export async function cancelSellerOrder(
     await stripe.refunds.create(
       {
         payment_intent: paymentIntentId,
-        amount: Math.round(Number(sellerOrder.subtotal) * 100),
+        amount: paidCents(sellerOrder),
       },
       { idempotencyKey: `refund_${sellerOrderId}` }
     );
@@ -206,7 +215,7 @@ export async function cancelSellerOrder(
     action: "seller_order_refunded",
     entityType: "SellerOrder",
     entityId: sellerOrderId,
-    afterValue: { amount: sellerOrder.subtotal.toString() },
+    afterValue: { amount: fromCents(paidCents(sellerOrder)).toFixed(2) },
   });
   return { ok: true };
 }
@@ -285,7 +294,7 @@ export async function resolveReturn(
     await stripe.refunds.create(
       {
         payment_intent: paymentIntentId,
-        amount: Math.round(Number(current.subtotal) * 100),
+        amount: paidCents(current),
       },
       { idempotencyKey: `return_${sellerOrderId}` }
     );
@@ -303,7 +312,7 @@ export async function resolveReturn(
     action: "seller_order_refunded",
     entityType: "SellerOrder",
     entityId: sellerOrderId,
-    afterValue: { amount: current.subtotal.toString(), reason: "return" },
+    afterValue: { amount: fromCents(paidCents(current)).toFixed(2), reason: "return" },
   });
 
   const approvedTitle = "Your return has been approved and refunded";

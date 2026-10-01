@@ -71,8 +71,12 @@ export async function removeCartItemForBuyer(cartId: string, cartItemId: string)
   return prisma.cartItem.delete({ where: { id: cartItemId } });
 }
 
+/** Also drops the applied promo code — it was consumed by the order this cart just became. */
 export function clearCartItems(cartId: string) {
-  return prisma.cartItem.deleteMany({ where: { cartId } });
+  return prisma.$transaction([
+    prisma.cartItem.deleteMany({ where: { cartId } }),
+    prisma.cart.update({ where: { id: cartId }, data: { couponId: null } }),
+  ]);
 }
 
 /** One cheap aggregate for the header's cart badge — only called when a session exists. */

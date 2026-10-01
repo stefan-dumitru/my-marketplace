@@ -4,6 +4,8 @@ import { getCartWithItems } from "@/server/data/cart";
 import { getAddressesForAccount } from "@/server/services/address-service";
 import { Card } from "@/components/ui/card";
 import { AddressForm } from "@/components/checkout/AddressForm";
+import { cartSubtotalCents, resolveCartCoupon } from "@/server/services/coupon-service";
+import { fromCents } from "@/lib/coupons";
 import { formatPrice } from "@/lib/format";
 
 export default async function CheckoutPage() {
@@ -12,16 +14,15 @@ export default async function CheckoutPage() {
   if (!session.user.emailVerifiedAt) redirect("/cart?verify=1");
 
   // Fetched fresh here — a separate request from the cart page, nothing caches this in between.
-  const [{ items }, savedAddresses] = await Promise.all([
+  const [{ cart, items }, savedAddresses] = await Promise.all([
     getCartWithItems(session.user.id),
     getAddressesForAccount(session.user.id),
   ]);
   if (items.length === 0) redirect("/cart");
 
-  const grandTotal = items.reduce(
-    (sum, item) => sum + Number(item.productVariant.price) * item.quantity,
-    0
-  );
+  const couponState = await resolveCartCoupon(session.user.id, cart, items);
+  const subtotalCents = cartSubtotalCents(items);
+  const discountCents = couponState.status === "applied" ? couponState.discountCents : 0;
   // savedAddresses is already ordered default-first, so this is free — no separate query.
   const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? null;
 
@@ -43,10 +44,21 @@ export default async function CheckoutPage() {
               <span>{formatPrice(Number(item.productVariant.price) * item.quantity)}</span>
             </div>
           ))}
+          {couponState.status === "applied" && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>Discount ({couponState.code})</span>
+              <span>−{formatPrice(fromCents(discountCents))}</span>
+            </div>
+          )}
           <div className="mt-2 flex justify-between border-t border-border pt-2 font-semibold">
             <span>Total</span>
-            <span>{formatPrice(grandTotal)}</span>
+            <span>{formatPrice(fromCents(subtotalCents - discountCents))}</span>
           </div>
+          {couponState.status === "dropped" && (
+            <p role="status" className="text-muted-foreground">
+              {couponState.message}
+            </p>
+          )}
         </Card>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { enqueueSearchSync } from "@/lib/search-sync";
 import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 
 export function getSellerProfileByUserId(userId: string) {
@@ -108,8 +109,8 @@ export function listSuspendedSellerProfiles(opts?: { page?: number }) {
  * functional.md's "suspension deactivates their listings but preserves order history" exactly
  * (order/SellerOrder rows are never touched, only Product.status).
  */
-export function suspendSellerProfileAndDeactivateProducts(sellerProfileId: string) {
-  return prisma.$transaction([
+export async function suspendSellerProfileAndDeactivateProducts(sellerProfileId: string) {
+  const result = await prisma.$transaction([
     prisma.sellerProfile.update({
       where: { id: sellerProfileId },
       data: { status: "suspended", suspendedAt: new Date() },
@@ -119,6 +120,8 @@ export function suspendSellerProfileAndDeactivateProducts(sellerProfileId: strin
       data: { status: "inactive", deactivatedAt: new Date() },
     }),
   ]);
+  await enqueueSearchSync({ sellerId: sellerProfileId });
+  return result;
 }
 
 /**

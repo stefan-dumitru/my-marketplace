@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { enqueueSearchSync } from "@/lib/search-sync";
 
 export function listActiveCategories(opts?: { take?: number }) {
   return prisma.category.findMany({
@@ -50,5 +51,8 @@ export async function updateCategory(
   const owned = await prisma.category.findFirst({ where: { id }, select: { id: true } });
   if (!owned) return null;
 
-  return prisma.category.update({ where: { id }, data });
+  const updated = await prisma.category.update({ where: { id }, data });
+  // Each indexed document carries its category's name, so a rename must refresh them all.
+  await enqueueSearchSync({ categoryId: id });
+  return updated;
 }

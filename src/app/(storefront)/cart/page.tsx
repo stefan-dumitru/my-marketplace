@@ -6,6 +6,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CartItemRow } from "@/components/cart/CartItemRow";
 import { ResendVerificationButton } from "@/components/auth/ResendVerificationButton";
+import { PromoCodeForm } from "@/components/cart/PromoCodeForm";
+import { cartSubtotalCents, resolveCartCoupon } from "@/server/services/coupon-service";
+import { fromCents } from "@/lib/coupons";
 import { formatPrice } from "@/lib/format";
 
 type Props = {
@@ -17,7 +20,9 @@ export default async function CartPage({ searchParams }: Props) {
   if (!session) redirect("/auth/login?callbackUrl=/cart");
 
   const { verify } = await searchParams;
-  const { items } = await getCartWithItems(session.user.id);
+  const { cart, items } = await getCartWithItems(session.user.id);
+  const couponState = await resolveCartCoupon(session.user.id, cart, items);
+  const discountCents = couponState.status === "applied" ? couponState.discountCents : 0;
 
   const sellers = new Map<
     string,
@@ -31,10 +36,7 @@ export default async function CartPage({ searchParams }: Props) {
     sellers.get(seller.id)!.items.push(item);
   }
 
-  const grandTotal = items.reduce(
-    (sum, item) => sum + Number(item.productVariant.price) * item.quantity,
-    0
-  );
+  const subtotalCents = cartSubtotalCents(items);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
@@ -44,6 +46,12 @@ export default async function CartPage({ searchParams }: Props) {
         <Card className="mb-6 flex flex-col gap-2 border-destructive/30 bg-destructive/5 p-4 text-sm">
           <p>Verify your email before checking out.</p>
           <ResendVerificationButton email={session.user.email ?? ""} />
+        </Card>
+      )}
+
+      {couponState.status === "dropped" && (
+        <Card role="status" className="mb-6 p-4 text-sm">
+          {couponState.message}
         </Card>
       )}
 
@@ -93,11 +101,26 @@ export default async function CartPage({ searchParams }: Props) {
             );
           })}
 
-          <div className="flex items-center justify-between border-t border-border pt-4">
-            <p className="text-lg font-semibold">Total: {formatPrice(grandTotal)}</p>
-            <Link href="/checkout" className={buttonVariants()}>
-              Checkout
-            </Link>
+          <div className="flex flex-col gap-3 border-t border-border pt-4">
+            <PromoCodeForm appliedCode={couponState.status === "applied" ? couponState.code : null} />
+            {discountCents > 0 && (
+              <>
+                <p className="flex justify-between text-sm text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span>{formatPrice(fromCents(subtotalCents))}</span>
+                </p>
+                <p className="flex justify-between text-sm text-muted-foreground">
+                  <span>Discount</span>
+                  <span>−{formatPrice(fromCents(discountCents))}</span>
+                </p>
+              </>
+            )}
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-semibold">Total: {formatPrice(fromCents(subtotalCents - discountCents))}</p>
+              <Link href="/checkout" className={buttonVariants()}>
+                Checkout
+              </Link>
+            </div>
           </div>
         </div>
       )}

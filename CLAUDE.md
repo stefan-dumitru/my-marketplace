@@ -23,6 +23,8 @@ building. What you're building lives in [specifications/](specifications/SPECS.m
   - React Hook Form for forms
   - Resend for transactional email
   - Inngest for background jobs / queues
+  - Meilisearch for typo-tolerant search + autocomplete (optional; Postgres full-text/trigram is the
+    built-in fallback — see operations.md > External Integrations)
 
 ## Architecture Principles
 

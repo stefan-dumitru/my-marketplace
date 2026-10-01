@@ -12,6 +12,7 @@ import {
   getProductBySellerAndSku,
   getProductBySlug,
   listActiveProducts,
+  type ExternalRanker,
   listDistinctActiveBrands,
   listPendingProductsForAdmin,
   listProductsForSeller as listProductsForSellerData,
@@ -24,6 +25,9 @@ import { slugify } from "@/lib/slug";
 import { splitPage } from "@/lib/pagination";
 import { deleteImageIfManaged } from "@/server/services/upload-service";
 import { notifyAdmins } from "@/server/services/notification-service";
+import { searchProductIds } from "@/server/services/search-service";
+import { isSearchConfigured } from "@/lib/search";
+import { logger } from "@/lib/logger";
 
 export type CreateProductResult =
   | { ok: true }
@@ -144,6 +148,18 @@ export async function listProductsForSeller(sellerId: string, page?: number) {
   return { products: items, hasNextPage };
 }
 
+/** Meilisearch ranking with a silent Postgres fallback: search must never hard-fail because the
+ * index is down — buyers just get the slightly less typo-tolerant built-in search instead. */
+async function rankWithSearchEngine(args: Parameters<ExternalRanker>[0]) {
+  if (!isSearchConfigured()) return null;
+  try {
+    return await searchProductIds(args);
+  } catch (err) {
+    logger.warn({ err }, "search engine unavailable, falling back to Postgres search");
+    return null;
+  }
+}
+
 export function listActiveProductsForStorefront(
   opts?: {
     page?: number;
@@ -155,7 +171,7 @@ export function listActiveProductsForStorefront(
     minRating?: number;
   }
 ) {
-  return listActiveProducts(opts);
+  return listActiveProducts(opts, rankWithSearchEngine);
 }
 
 export function listActiveBrandsForStorefront() {
