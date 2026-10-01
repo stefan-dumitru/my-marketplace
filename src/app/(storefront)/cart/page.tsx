@@ -9,6 +9,7 @@ import { ResendVerificationButton } from "@/components/auth/ResendVerificationBu
 import { PromoCodeForm } from "@/components/cart/PromoCodeForm";
 import { cartSubtotalCents, resolveCartCoupon } from "@/server/services/coupon-service";
 import { fromCents } from "@/lib/coupons";
+import { shippingCentsForSellerCount } from "@/lib/shipping";
 import { formatPrice } from "@/lib/format";
 
 type Props = {
@@ -37,6 +38,7 @@ export default async function CartPage({ searchParams }: Props) {
   }
 
   const subtotalCents = cartSubtotalCents(items);
+  const shippingCents = shippingCentsForSellerCount(sellers.size);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
@@ -103,20 +105,26 @@ export default async function CartPage({ searchParams }: Props) {
 
           <div className="flex flex-col gap-3 border-t border-border pt-4">
             <PromoCodeForm appliedCode={couponState.status === "applied" ? couponState.code : null} />
+            <p className="flex justify-between text-sm text-muted-foreground">
+              <span>Subtotal</span>
+              <span>{formatPrice(fromCents(subtotalCents))}</span>
+            </p>
             {discountCents > 0 && (
-              <>
-                <p className="flex justify-between text-sm text-muted-foreground">
-                  <span>Subtotal</span>
-                  <span>{formatPrice(fromCents(subtotalCents))}</span>
-                </p>
-                <p className="flex justify-between text-sm text-muted-foreground">
-                  <span>Discount</span>
-                  <span>−{formatPrice(fromCents(discountCents))}</span>
-                </p>
-              </>
+              <p className="flex justify-between text-sm text-muted-foreground">
+                <span>Discount</span>
+                <span>−{formatPrice(fromCents(discountCents))}</span>
+              </p>
             )}
+            <p className="flex justify-between text-sm text-muted-foreground">
+              <span>
+                Shipping ({sellers.size} seller{sellers.size === 1 ? "" : "s"})
+              </span>
+              <span>{formatPrice(fromCents(shippingCents))}</span>
+            </p>
             <div className="flex items-center justify-between">
-              <p className="text-lg font-semibold">Total: {formatPrice(fromCents(subtotalCents - discountCents))}</p>
+              <p className="text-lg font-semibold">
+                Total: {formatPrice(fromCents(subtotalCents - discountCents + shippingCents))}
+              </p>
               <Link href="/checkout" className={buttonVariants()}>
                 Checkout
               </Link>

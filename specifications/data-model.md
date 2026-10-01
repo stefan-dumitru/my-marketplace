@@ -194,7 +194,7 @@ Europe/Bucharest — see that file).
   seller-specific `SellerOrder`s sharing one payment.
 - **Key fields:** id, orderNumber (unique, user-facing), buyerId (FK), status (aggregate, derived
   from its SellerOrders), totalAmount, currency, shippingAddressSnapshot (JSON, denormalized
-  copy — see Address above), couponId?, couponCodeSnapshot?, discountAmount, createdAt
+  copy — see Address above), couponId?, couponCodeSnapshot?, discountAmount, shippingAmount, createdAt
 - **Natural/external key:** `orderNumber` — the identifier shown to the buyer and used for
   support lookups.
 - **Relationships:** belongs to one `User` (buyer); has many `SellerOrder`; has one `Payment`
@@ -203,7 +203,7 @@ Europe/Bucharest — see that file).
 - **Bulk operations:** none — orders are never bulk-created/imported.
 - **Delete/cascade semantics:** immutable/permanent; no cascade delete path exists.
 - **Constraints / invariants:** `totalAmount` must equal the sum of its `SellerOrder.subtotal`
-  values, minus `discountAmount`, plus shipping/fees. `discountAmount` and `couponCodeSnapshot`
+  values, minus `discountAmount`, plus `shippingAmount` (Σ `SellerOrder.shippingCharged`). `discountAmount` and `couponCodeSnapshot`
   are frozen at purchase time (a later edit/deactivation of the coupon never reprices an order).
 
 ### SellerOrder — Transactional
@@ -211,8 +211,8 @@ Europe/Bucharest — see that file).
 - **Purpose:** The per-seller sub-order split out of an `Order`, since each seller fulfills and
   gets paid independently.
 - **Key fields:** id, orderId (FK), sellerId (FK), status (pending / confirmed / shipped /
-  delivered / cancelled / returned), subtotal, discountAllocated, commissionAmount, payoutAmount,
-  trackingNumber, shippedAt, deliveredAt, cancelledAt
+  delivered / cancelled / returned), subtotal, discountAllocated, shippingFee, shippingCharged, commissionAmount,
+  payoutAmount, trackingNumber, shippedAt, deliveredAt, cancelledAt
 - **Natural/external key:** none beyond the parent `Order.orderNumber`.
 - **Relationships:** belongs to one `Order`; belongs to one `SellerProfile`; has many `OrderItem`
 - **Lifecycle:** created alongside its parent `Order`. Status is advanced only by the owning
@@ -230,6 +230,11 @@ Europe/Bucharest — see that file).
   `commissionAmount` and `payoutAmount` are identical with or without a coupon, and
   `discountAllocated` exists only so a cancel/return refunds `subtotal − discountAllocated` —
   what the buyer actually paid for that sub-order.
+  `shippingFee` is the flat per-seller fee owed to the seller (`SHIPPING_FEE_PER_SELLER`, frozen at
+  sale time); `shippingCharged` is what the buyer paid for it (equal to the fee, or 0 if waived).
+  `payoutAmount = subtotal − commissionAmount + shippingFee` — commission is on goods only and
+  coupons never reduce shipping. A cancel refunds goods + `shippingCharged`; an approved return
+  refunds goods only.
 
 ### OrderItem — Transactional
 

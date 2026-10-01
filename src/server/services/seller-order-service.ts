@@ -21,8 +21,12 @@ import { toCents, fromCents } from "@/lib/coupons";
  * discount. Sellers' payouts are NOT reduced by coupons (platform-funded), but a refund must never
  * hand back more than was charged — across all of an order's sub-orders these sum to exactly the
  * amount Stripe collected. */
-function paidCents(so: { subtotal: unknown; discountAllocated: unknown }) {
-  return toCents(Number(so.subtotal)) - toCents(Number(so.discountAllocated));
+function paidCents(
+  so: { subtotal: unknown; discountAllocated: unknown; shippingCharged: unknown },
+  opts: { includeShipping: boolean }
+) {
+  const goods = toCents(Number(so.subtotal)) - toCents(Number(so.discountAllocated));
+  return opts.includeShipping ? goods + toCents(Number(so.shippingCharged)) : goods;
 }
 
 export type ShipOrderResult =
@@ -195,7 +199,8 @@ export async function cancelSellerOrder(
     await stripe.refunds.create(
       {
         payment_intent: paymentIntentId,
-        amount: paidCents(sellerOrder),
+        // Cancelled before it shipped, so the shipping the buyer paid for this sub-order goes back too.
+        amount: paidCents(sellerOrder, { includeShipping: true }),
       },
       { idempotencyKey: `refund_${sellerOrderId}` }
     );
@@ -215,7 +220,7 @@ export async function cancelSellerOrder(
     action: "seller_order_refunded",
     entityType: "SellerOrder",
     entityId: sellerOrderId,
-    afterValue: { amount: fromCents(paidCents(sellerOrder)).toFixed(2) },
+    afterValue: { amount: fromCents(paidCents(sellerOrder, { includeShipping: true })).toFixed(2) },
   });
   return { ok: true };
 }
@@ -294,7 +299,8 @@ export async function resolveReturn(
     await stripe.refunds.create(
       {
         payment_intent: paymentIntentId,
-        amount: paidCents(current),
+        // Returns refund goods only — shipping isn't refundable once the parcel was delivered.
+        amount: paidCents(current, { includeShipping: false }),
       },
       { idempotencyKey: `return_${sellerOrderId}` }
     );
@@ -312,7 +318,7 @@ export async function resolveReturn(
     action: "seller_order_refunded",
     entityType: "SellerOrder",
     entityId: sellerOrderId,
-    afterValue: { amount: fromCents(paidCents(current)).toFixed(2), reason: "return" },
+    afterValue: { amount: fromCents(paidCents(current, { includeShipping: false })).toFixed(2), reason: "return" },
   });
 
   const approvedTitle = "Your return has been approved and refunded";

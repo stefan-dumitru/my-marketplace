@@ -72,6 +72,12 @@ export default async function SellerOrderDetailPage({ params }: Props) {
         <p className="text-right text-muted-foreground">
           Subtotal: <span className="font-medium text-foreground">{formatPrice(sellerOrder.subtotal)}</span>
         </p>
+        {Number(sellerOrder.shippingFee) > 0 && (
+          <p className="text-right text-muted-foreground">
+            Shipping fee (yours, no commission):{" "}
+            <span className="font-medium text-foreground">{formatPrice(sellerOrder.shippingFee)}</span>
+          </p>
+        )}
       </Card>
 
       <Card className="p-4 text-sm">

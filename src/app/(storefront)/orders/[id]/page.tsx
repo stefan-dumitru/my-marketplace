@@ -136,6 +136,13 @@ export default async function OrderDetailPage({ params }: Props) {
         </p>
       </Card>
 
+      {Number(order.shippingAmount) > 0 && (
+        <div className="flex justify-between border-t border-border pt-4 text-sm text-muted-foreground">
+          <span>Shipping</span>
+          <span>{formatPrice(order.shippingAmount)}</span>
+        </div>
+      )}
+
       {Number(order.discountAmount) > 0 && (
         <div className="flex justify-between border-t border-border pt-4 text-sm text-muted-foreground">
           <span>Discount{order.couponCodeSnapshot ? ` (${order.couponCodeSnapshot})` : ""}</span>

@@ -39,7 +39,7 @@ export async function getAdminDashboardStats() {
   const [gmv, activeSellers, pendingSellerApprovals, ordersToday, takenDownReviews] = await Promise.all([
     prisma.order.aggregate({
       where: { status: "paid", createdAt: { gte: monthStart() } },
-      _sum: { totalAmount: true, discountAmount: true },
+      _sum: { totalAmount: true, discountAmount: true, shippingAmount: true },
     }),
     prisma.sellerProfile.count({ where: { status: "approved" } }),
     prisma.sellerProfile.count({ where: { status: "pending" } }),
@@ -50,10 +50,11 @@ export async function getAdminDashboardStats() {
   ]);
 
   return {
-    // GMV is gross (pre-discount), matching the sales rollups, which sum SellerOrder.subtotal:
-    // totalAmount is what buyers paid *after* platform-funded coupons, so the discount is added
-    // back. The discount is shown on its own tile so the platform's margin stays explainable.
-    gmvThisMonth: Number(gmv._sum.totalAmount ?? 0) + Number(gmv._sum.discountAmount ?? 0),
+    // GMV is goods only, gross of coupons, matching the sales rollups (which sum
+    // SellerOrder.subtotal): totalAmount is what buyers paid, so platform-funded discounts are
+    // added back and shipping (which belongs to sellers) is taken out.
+    gmvThisMonth:
+      Number(gmv._sum.totalAmount ?? 0) + Number(gmv._sum.discountAmount ?? 0) - Number(gmv._sum.shippingAmount ?? 0),
     discountsThisMonth: Number(gmv._sum.discountAmount ?? 0),
     activeSellers,
     pendingSellerApprovals,

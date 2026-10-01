@@ -5,6 +5,7 @@ import { DEFAULT_PAGE_SIZE } from "@/lib/pagination";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { inngest } from "@/lib/inngest";
 import { logger } from "@/lib/logger";
+import { SHIPPING_FEE_PER_SELLER } from "@/lib/constants";
 import { allocateDiscountCents, evaluateCoupon, fromCents, toCents, type CouponFailure } from "@/lib/coupons";
 import {
   couponToRules,
@@ -173,7 +174,10 @@ export async function createOrderFromCart(input: {
           commissionAmount,
           // Frozen at sale time alongside commissionAmount, same invariant — never
           // retroactively recomputed later at payout time.
-          payoutAmount: subtotal - commissionAmount,
+          // The seller keeps the shipping fee in full and no commission is taken on it.
+          payoutAmount: subtotal - commissionAmount + SHIPPING_FEE_PER_SELLER,
+          shippingFee: SHIPPING_FEE_PER_SELLER,
+          shippingCharged: SHIPPING_FEE_PER_SELLER,
           items: {
             create: items.map((i) => ({
               productVariantId: i.productVariantId,
@@ -225,7 +229,9 @@ export async function createOrderFromCart(input: {
         discountAllocated: fromCents(allocations[i]),
       }));
 
-      const totalAmount = fromCents(subtotalCents - discountCents);
+      // Coupons discount goods only; shipping is added on top and never discounted.
+      const shippingCents = sellerOrdersCreate.reduce((sum, so) => sum + toCents(so.shippingCharged), 0);
+      const totalAmount = fromCents(subtotalCents - discountCents + shippingCents);
       const orderNumber = await generateUniqueOrderNumber(tx);
 
       const created = await tx.order.create({
@@ -234,6 +240,7 @@ export async function createOrderFromCart(input: {
           buyerId: input.buyerId,
           totalAmount,
           discountAmount: fromCents(discountCents),
+          shippingAmount: fromCents(shippingCents),
           shippingAddressSnapshot: input.shippingAddressSnapshot,
           ...(input.couponId && couponCodeSnapshot
             ? {

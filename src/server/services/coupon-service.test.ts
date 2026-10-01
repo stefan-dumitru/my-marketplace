@@ -82,10 +82,11 @@ describe("createOrderFromCart with a coupon", () => {
     const plain = await order(baseline.id, [a.variantId, b.variantId]);
     if (!discounted.ok || !plain.ok) throw new Error("setup failed");
 
-    expect(Number(discounted.order.totalAmount)).toBe(180);
+    // Goods 200 - 20 discount + 2 x 15 shipping (the discount never touches shipping).
+    expect(Number(discounted.order.totalAmount)).toBe(210);
     expect(Number(discounted.order.discountAmount)).toBe(20);
     expect(discounted.order.couponCodeSnapshot).toBe(coupon.code);
-    expect(Number(discounted.order.payment?.amount)).toBe(180);
+    expect(Number(discounted.order.payment?.amount)).toBe(210);
 
     const allocated = discounted.order.sellerOrders.map((so) => Number(so.discountAllocated));
     expect(allocated.reduce((x, y) => x + y, 0)).toBe(20);
@@ -115,7 +116,8 @@ describe("createOrderFromCart with a coupon", () => {
 
     const cents = result.order.sellerOrders.map((so) => Math.round(Number(so.discountAllocated) * 100));
     expect(cents.reduce((x, y) => x + y, 0)).toBe(100);
-    expect(Math.round(Number(result.order.totalAmount) * 100)).toBe(9_900);
+    // Goods 99.00 + 3 x 15.00 shipping.
+    expect(Math.round(Number(result.order.totalAmount) * 100)).toBe(9_900 + 4_500);
   });
 
   it("rolls back the stock decrement and creates no order when the coupon has expired", async () => {
@@ -312,7 +314,7 @@ describe("checkoutCart with a coupon", () => {
     const gross = params.line_items.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0);
     const placed = await prisma.order.findFirstOrThrow({ where: { buyerId: buyer.id } });
     expect(gross - 3_000).toBe(Math.round(Number(placed.totalAmount) * 100));
-    expect(Number(placed.totalAmount)).toBe(170);
+    expect(Number(placed.totalAmount)).toBe(185); // 200 - 30 discount + 15 shipping
 
     const cart = await prisma.cart.findUniqueOrThrow({ where: { userId: buyer.id } });
     expect(cart.couponId).toBeNull();
@@ -366,9 +368,9 @@ describe("refunds on a discounted order", () => {
     const result = await cancelSellerOrder(a.profile.id, target.id, admin.id);
 
     expect(result).toEqual({ ok: true });
-    // 100 subtotal - 10 (its half of the 20 discount) = 90.00 RON.
+    // 100 subtotal - 10 (its half of the 20 discount) + 15 shipping it paid = 105.00 RON.
     expect(stripe.refunds.create).toHaveBeenCalledWith(
-      expect.objectContaining({ payment_intent: "pi_test", amount: 9_000 }),
+      expect.objectContaining({ payment_intent: "pi_test", amount: 10_500 }),
       expect.anything()
     );
   });

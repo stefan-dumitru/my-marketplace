@@ -5,8 +5,8 @@ each is picked up. Same format as [release-2.md](release-2.md): scope, acceptanc
 cases.
 
 Specced so far (build order): **1. Typo-tolerant search + autocomplete → 2. Coupon codes /
-discounts.** The remaining roadmap items (carrier integration, disputes/ticketing, multi-language,
-free-shipping subscription) get their own sections here when they're started.
+discounts → 3. Shipping cost + free-shipping subscription.** The remaining roadmap items (carrier
+integration, disputes/ticketing, multi-language) get their own sections here when they're started.
 
 ---
 
@@ -171,6 +171,97 @@ these consistently, including refunds and payouts.
 - Reports → **as built:** the admin dashboard's GMV is gross (pre-discount) and a separate
   "Discounts given" tile shows the month's discounts, so platform margin stays explainable. Seller
   reports and the sales rollups already sum `SellerOrder.subtotal`, which coupons never change.
+
+---
+
+## 3. Shipping cost + free-shipping subscription
+
+**Problem:** Checkout charges product prices only — there is no shipping cost anywhere
+(`createStripeSessionForOrder` builds Stripe line items from `unitPriceSnapshot` alone), so there
+is nothing for a subscription to waive. This item is two parts, built in order, each shippable on
+its own: **(A)** a real per-seller shipping fee, **(B)** a monthly Stripe subscription that waives it.
+
+**Decisions (confirmed):**
+- Flat fee **per seller sub-order** (a 3-seller cart pays 3 fees), one platform-wide amount
+  (placeholder **15.00 RON**, a constant in `lib/constants.ts`; changing it is a deploy, not an admin
+  setting, in v1). Already-placed orders are never repriced.
+- **The seller keeps the shipping fee**: it is added to `payoutAmount` and no commission is taken on
+  it (the seller does the shipping).
+- For a subscriber the buyer pays 0, but the **platform still pays the seller the full fee**
+  (funded by subscription revenue) — sellers' payouts are identical for subscribers and
+  non-subscribers, the same principle as platform-funded coupons.
+- One plan: **19 RON / month**, cancel anytime (placeholder price, held in the Stripe Price object,
+  not in code).
+
+### Part A — Shipping fee
+
+**Scope:**
+- `SellerOrder` gains `shippingFee` (the fee owed to the seller, always the full amount) and
+  `shippingCharged` (what the buyer actually paid: equal to `shippingFee`, or 0 when waived).
+  `Order` gains `shippingAmount` (= Σ `shippingCharged`). Both default 0, so existing orders are
+  unaffected.
+- `Order.totalAmount = Σ SellerOrder.subtotal + Order.shippingAmount − Order.discountAmount`.
+- `SellerOrder.payoutAmount = subtotal − commissionAmount + shippingFee`. Commission is computed on
+  goods only.
+- Coupons discount **goods only**, never shipping; the pro-rata allocation is unchanged. The
+  2.00 RON minimum-charge guard applies to the final payable total.
+- Stripe: each sub-order's shipping is a separate line item ("Shipping — <store name>") so Stripe
+  charges exactly `Order.totalAmount`; a waived fee is simply omitted.
+- Cart, checkout, order detail, invoice PDF and the Stripe session all show a shipping line.
+- **Refunds:** cancelling a sub-order refunds `subtotal − discountAllocated + shippingCharged`
+  (nothing shipped). An approved return refunds goods only (`subtotal − discountAllocated`);
+  shipping is non-refundable on returns.
+
+**As built (Part A):** exactly as specified above. The fee lives in `SHIPPING_FEE_PER_SELLER`
+(`lib/constants.ts`); `lib/shipping.ts` is the one shared helper for cart/checkout display. Admin
+dashboard GMV stays goods-only (shipping is excluded, since it belongs to sellers).
+
+### Part B — Subscription
+
+**Scope:**
+- `User` gains `stripeCustomerId?`. New `Subscription` model: `userId` (unique), `stripeSubscriptionId`
+  (unique), `status`, `currentPeriodEnd`, `cancelAtPeriodEnd`, timestamps.
+- Subscribe: a "Free shipping" page / cart prompt starts a Stripe Checkout session in
+  `mode: "subscription"`. Manage/cancel through the Stripe Billing Portal (no custom cancel UI).
+- Webhooks (the existing handler already ignores sessions without `metadata.orderId`):
+  `checkout.session.completed` (subscription mode), `customer.subscription.updated`,
+  `customer.subscription.deleted`, `invoice.payment_failed`. All writes idempotent and keyed by
+  Stripe subscription id, same convention as the payment webhooks.
+- **Entitlement** = a `Subscription` row with status `active` (or `trialing`) **and**
+  `currentPeriodEnd` in the future. `past_due` / `canceled` / `unpaid` lose the benefit. A
+  subscriber who cancels keeps it until `currentPeriodEnd`.
+- Entitlement is evaluated **inside the checkout transaction** from the database (never from
+  anything the client sends) and the result is frozen on the order (`shippingCharged`).
+- Cart/checkout show the shipping fee with a "free with subscription" hint for non-subscribers and
+  a "Free shipping (subscription)" line for subscribers.
+- Admin dashboard: active subscribers count and subscription revenue this month.
+
+**Acceptance criteria:**
+- [ ] A 2-seller cart is charged 2 × the fee; Stripe charge amount == `Order.totalAmount` to the cent.
+- [ ] A subscriber is charged 0 shipping, yet each seller's `payoutAmount` is identical to the
+      non-subscriber order (verified by test).
+- [ ] Coupon + shipping together: discount never reduces shipping; total matches Stripe.
+- [ ] Cancel refunds goods + shipping charged; approved return refunds goods only; sums never exceed
+      what Stripe collected.
+- [ ] A subscription that lapses between viewing the cart and paying is re-evaluated at checkout and
+      the buyer is shown the real total; an order already placed keeps its frozen shipping.
+- [ ] Webhook redelivery / out-of-order events never corrupt subscription state; status only moves
+      forward by Stripe's own `current_period_end`/status, and events for unknown customers are
+      ignored safely.
+- [ ] Only the owning user can open their Billing Portal session (rate-limited, server-side
+      customer lookup — never a customer id from the client).
+- [ ] GDPR deletion (`anonymizeUserById`) cancels the Stripe subscription first; the local row is
+      kept anonymized for financial records.
+- [ ] Orders placed before this release render and refund exactly as before (shipping fields 0).
+
+**Edge cases:**
+- Existing `payment_failed` order retried later → uses the shipping frozen on the order, even if
+  entitlement has since changed.
+- Fee amount changes after an order is placed → no effect on that order.
+- User subscribes while an unpaid order exists → that order keeps its frozen (unwaived) shipping.
+- Stripe Billing Portal and subscriptions need configuration in the Stripe dashboard (test mode
+  first): one Product + recurring Price, portal enabled with cancellation allowed, and the three
+  subscription webhook events added to the existing endpoint.
 
 ---
 

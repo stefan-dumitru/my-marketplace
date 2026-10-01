@@ -53,7 +53,14 @@ describe("createOrderFromCart", () => {
     const soB = result.order.sellerOrders.find((so) => so.sellerId === sellerB.profile.id)!;
     expect(Number(soA.subtotal)).toBe(40);
     expect(Number(soB.subtotal)).toBe(45);
-    expect(Number(result.order.totalAmount)).toBe(85);
+    // Goods 85 + one flat 15 RON shipping fee per seller sub-order (2 sellers).
+    expect(Number(result.order.shippingAmount)).toBe(30);
+    expect(Number(result.order.totalAmount)).toBe(115);
+    expect(Number(soA.shippingFee)).toBe(15);
+    expect(Number(soA.shippingCharged)).toBe(15);
+    // The seller keeps the whole shipping fee on top of goods minus commission (10% of 40 = 4).
+    expect(Number(soA.payoutAmount)).toBeCloseTo(40 - 4 + 15, 2);
+    expect(Number(soB.payoutAmount)).toBeCloseTo(45 - 4.5 + 15, 2);
 
     const orderCount = await prisma.order.count({ where: { buyerId: buyer.id } });
     expect(orderCount).toBe(1);

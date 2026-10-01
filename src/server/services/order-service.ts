@@ -33,18 +33,35 @@ async function createStripeSessionForOrder(order: {
   totalAmount: unknown;
   discountAmount: unknown;
   couponCodeSnapshot: string | null;
-  sellerOrders: { items: { productNameSnapshot: string; unitPriceSnapshot: unknown; quantity: number }[] }[];
+  sellerOrders: {
+    shippingCharged: unknown;
+    seller: { storeName: string };
+    items: { productNameSnapshot: string; unitPriceSnapshot: unknown; quantity: number }[];
+  }[];
 }) {
-  const lineItems = order.sellerOrders.flatMap((so) =>
-    so.items.map((item) => ({
+  const lineItems = order.sellerOrders.flatMap((so) => {
+    const items = so.items.map((item) => ({
       price_data: {
         currency: "ron",
         product_data: { name: item.productNameSnapshot },
         unit_amount: Math.round(Number(item.unitPriceSnapshot) * 100),
       },
       quantity: item.quantity,
-    }))
-  );
+    }));
+    // One shipping line per seller sub-order; a waived fee (shippingCharged 0) is simply omitted.
+    const shippingCents = toCents(Number(so.shippingCharged));
+    if (shippingCents > 0) {
+      items.push({
+        price_data: {
+          currency: "ron",
+          product_data: { name: `Shipping — ${so.seller.storeName}` },
+          unit_amount: shippingCents,
+        },
+        quantity: 1,
+      });
+    }
+    return items;
+  });
 
   // The discount goes to Stripe as a one-off fixed-amount coupon (Checkout can't take a negative
   // line item), so the amount Stripe charges equals Order.totalAmount to the cent. The order's own
@@ -53,7 +70,7 @@ async function createStripeSessionForOrder(order: {
   const discountCents = toCents(Number(order.discountAmount));
   const grossCents = lineItems.reduce((sum, li) => sum + li.price_data.unit_amount * li.quantity, 0);
   if (grossCents - discountCents !== toCents(Number(order.totalAmount))) {
-    throw new Error(`Order ${order.id}: line items minus discount don't match the stored total`);
+    throw new Error(`Order ${order.id}: line items (goods + shipping) minus discount don't match the stored total`);
   }
   const stripeCoupon =
     discountCents > 0

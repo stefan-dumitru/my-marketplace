@@ -18,6 +18,7 @@ type InvoiceOrder = {
   createdAt: Date;
   totalAmount: unknown;
   discountAmount: unknown;
+  shippingAmount: unknown;
   couponCodeSnapshot: string | null;
   shippingAddressSnapshot: unknown;
   sellerOrders: {
@@ -104,6 +105,13 @@ export function InvoiceDocument({
             </View>
           </View>
         ))}
+
+        {Number(order.shippingAmount) > 0 && (
+          <View style={styles.itemRow}>
+            <Text>Shipping</Text>
+            <Text>{formatAmount(order.shippingAmount)}</Text>
+          </View>
+        )}
 
         {Number(order.discountAmount) > 0 && (
           <View style={styles.itemRow}>
