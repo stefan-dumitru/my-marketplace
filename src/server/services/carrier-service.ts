@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { queueEmail } from "@/lib/email";
 import { createFanCourierClient, type FanCourierShipmentRequest } from "@/lib/fancourier";
 import { getCarrierConfig } from "@/server/data/carrier-config";
 
@@ -160,6 +161,67 @@ export async function fetchTracking(trackingNumber: string): Promise<FetchTracki
   }
 }
 
+async function sendTrackingStatusEmail(
+  sellerOrderId: string,
+  newStatus: string,
+  trackingNumber: string
+): Promise<void> {
+  try {
+    const sellerOrder = await prisma.sellerOrder.findUnique({
+      where: { id: sellerOrderId },
+      include: {
+        order: {
+          select: { buyerId: true, orderNumber: true },
+        },
+      },
+    });
+
+    if (!sellerOrder || !sellerOrder.order) {
+      logger.warn({ sellerOrderId }, "Could not find order for tracking email");
+      return;
+    }
+
+    const buyer = await prisma.user.findUnique({
+      where: { id: sellerOrder.order.buyerId },
+      select: { email: true, name: true },
+    });
+
+    if (!buyer || !buyer.email) {
+      logger.warn({ buyerId: sellerOrder.order.buyerId }, "Could not find buyer email for tracking email");
+      return;
+    }
+
+    const statusLabels: Record<string, string> = {
+      REGISTERED: "Your shipment has been registered with FanCourier",
+      IN_TRANSIT: "Your package is on the way",
+      OUT_FOR_DELIVERY: "Your package is out for delivery today",
+      DELIVERED: "Your package has been delivered",
+    };
+
+    const statusLabel = statusLabels[newStatus] || `Your shipment status: ${newStatus}`;
+
+    await queueEmail({
+      to: buyer.email,
+      subject: `Order ${sellerOrder.order.orderNumber} - ${statusLabel}`,
+      html: `
+        <p>Hi ${buyer.name},</p>
+        <p>${statusLabel}</p>
+        <p><strong>Tracking Number:</strong> <code>${trackingNumber}</code></p>
+        <p>Track your order at your order details page.</p>
+        <p>Thank you for your purchase!</p>
+      `,
+      text: `${statusLabel}\n\nTracking Number: ${trackingNumber}\n\nTrack your order at your order details page.`,
+    });
+
+    logger.info(
+      { buyerId: buyer.email, trackingNumber, status: newStatus },
+      "Tracking status email queued"
+    );
+  } catch (err) {
+    logger.error({ err, sellerOrderId }, "Failed to queue tracking status email");
+  }
+}
+
 /**
  * Update a SellerOrder's tracking status and check for status changes that should trigger
  * notifications (e.g., "in_transit" or "delivered").
@@ -174,6 +236,9 @@ export async function updateTrackingStatus(
 }> {
   const sellerOrder = await prisma.sellerOrder.findUnique({
     where: { id: sellerOrderId },
+    include: {
+      order: { select: { orderNumber: true } },
+    },
   });
 
   if (!sellerOrder) {
@@ -198,6 +263,11 @@ export async function updateTrackingStatus(
       { sellerOrderId, previousStatus, newStatus },
       "Tracking status updated"
     );
+
+    // Send notification email to buyer about status change
+    if (sellerOrder.trackingNumber) {
+      await sendTrackingStatusEmail(sellerOrderId, newStatus, sellerOrder.trackingNumber);
+    }
   } else if (sellerOrder.lastTrackedAt) {
     // Update lastTrackedAt even if status hasn't changed (for heartbeat tracking)
     await prisma.sellerOrder.update({
@@ -266,8 +336,6 @@ export async function syncCarrierTracking(): Promise<{
         { sellerOrderId: shipment.id, previousStatus: shipment.carrierStatus, newStatus: result.status },
         "Shipment status changed"
       );
-      // TODO: Trigger notification email to buyer when status changes
-      // For now, just logging the change
     }
   }
 

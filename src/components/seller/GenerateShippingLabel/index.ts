@@ -1,0 +1,1 @@
+export { GenerateShippingLabelForm } from "./GenerateShippingLabelForm";
