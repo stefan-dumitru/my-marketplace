@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSellerProfileByUserId } from "@/server/data/seller-profiles";
 import { generateShippingLabel } from "@/server/services/carrier-service";
 import { z } from "zod";
 
@@ -36,6 +37,12 @@ export async function generateLabelAction(
   try {
     const parsed = generateLabelSchema.parse(input);
 
+    // Get the seller profile for this user
+    const sellerProfile = await getSellerProfileByUserId(session.user.id);
+    if (!sellerProfile) {
+      return { ok: false, error: "Seller profile not found." };
+    }
+
     // Verify the seller owns this order
     const sellerOrder = await prisma.sellerOrder.findUnique({
       where: { id: parsed.sellerOrderId },
@@ -46,7 +53,7 @@ export async function generateLabelAction(
       return { ok: false, error: "Order not found." };
     }
 
-    if (sellerOrder.sellerId !== session.user.sellerId) {
+    if (sellerOrder.sellerId !== sellerProfile.id) {
       return { ok: false, error: "You do not have access to this order." };
     }
 
