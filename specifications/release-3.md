@@ -5,8 +5,9 @@ each is picked up. Same format as [release-2.md](release-2.md): scope, acceptanc
 cases.
 
 Specced so far (build order): **1. Typo-tolerant search + autocomplete → 2. Coupon codes /
-discounts → 3. Shipping cost + free-shipping subscription.** The remaining roadmap items (carrier
-integration, disputes/ticketing, multi-language) get their own sections here when they're started.
+discounts → 3. Shipping cost + free-shipping subscription → 4. Carrier integration (FanCourier).**
+The remaining roadmap items (disputes/ticketing, multi-language) get their own sections here when
+they're started.
 
 ---
 
@@ -268,11 +269,110 @@ dashboard GMV stays goods-only (shipping is excluded, since it belongs to seller
 
 ---
 
+## 4. Real shipping-carrier integration (FanCourier)
+
+**Problem:** Today, `trackingNumber` on a `SellerOrder` is a free-text field with no verification or
+link to any real carrier. A buyer sees a number that may be fake, incomplete, or unrecoverable if
+the seller forgets to enter it. There is no live tracking, no proof of delivery, and no
+carrier-driven notifications when the parcel moves.
+
+**Decision to confirm before building — which carrier and integration depth:**
+- **FanCourier (Romania's largest parcel carrier, recommended):** has a developer API for label
+  generation and tracking lookups, handles most Romanian domestic and international shipments, and
+  is already familiar to Romanian buyers. Alternative: DPD or GLS if you prefer, the integration
+  pattern is identical.
+- **API-based with real label generation (recommended):** sellers generate labels through the API,
+  which assigns a real FanCourier tracking number, returns a PDF label to print/scan, and stores
+  the number on the order. Live tracking queries use the tracking number to fetch current parcel
+  status from FanCourier. This proves the shipment is real and lets buyers track live.
+- Alternative (deferred to v2): manual entry + webhook sync (seller still types the number, but
+  webhooks from FanCourier auto-update tracking status). Simpler for v1, but doesn't solve the
+  "fake number" problem.
+- Everything below assumes API-based.
+
+**Scope:**
+- **Admin setup:** a settings page where the platform admin configures FanCourier API credentials
+  (API username/password, test vs. production mode). Stored encrypted in the database or as
+  environment variables. Only one credential set per environment (v1 scope).
+- **Seller shipping flow:** when a `SellerOrder` transitions from `paid` to `confirmed` (or during
+  an explicit "Ship now" action), the seller chooses:
+  - Which carrier (FanCourier for v1, hardcoded in the UI but prepared for multi-carrier later)
+  - Recipient address (pre-populated from the order's `shippingAddressSnapshot`)
+  - Optional: special instructions (fragile, signature required, etc.)
+  - Click "Generate label" → calls FanCourier API → gets back a tracking number and PDF label URL
+  - The `SellerOrder.trackingNumber` is populated with the real FanCourier number
+  - `SellerOrder.status` transitions to `shipped` (existing state)
+  - Label PDF is stored as a URL (Vercel Blob or a redirect to FanCourier's own CDN, TBD)
+  - Buyer is notified: order confirmation email now includes tracking link / QR code
+- **Tracking display:** order detail page shows the tracking number + a link to FanCourier's
+  public tracking URL. A "live tracking" section polls or displays FanCourier's current status
+  (in transit, out for delivery, delivered, exception, etc.) with last-update timestamp.
+- **Tracking sync:** a background job (Inngest) runs every 1–2 hours and polls FanCourier's
+  tracking API for all active shipments (status not `delivered` or `exception_resolved`). Updates
+  are stored on the `SellerOrder` in a new `lastTrackedAt` field. On status change (e.g.,
+  "in transit" → "out for delivery"), the buyer is notified via email (from Resend).
+- **Return shipments (future):** if a return is approved, a return label can be generated so the
+  buyer can send the parcel back. Deferred to v2 scope for now (out of scope for this increment).
+- **Error handling:** if the FanCourier API is down or rejects a label request (e.g., invalid
+  address), the seller is shown a clear error. They can retry. No order is left in a broken state.
+  Fallback: seller can manually type the tracking number (same as today) if the API is persistently
+  down, but the UI warns "this number is not verified."
+- **Data model:**
+  - `SellerOrder.trackingNumber` → already exists, now populated by API (not free-text)
+  - `SellerOrder.lastTrackedAt` (new) → timestamp of the last successful tracking status fetch
+  - `SellerOrder.labelUrl` (new) → URL to the shipping label PDF (or null if not yet generated)
+  - Tracking history: store past statuses? (deferred to v2 if needed; for v1, just the current
+    status + `lastTrackedAt` is enough)
+
+**Acceptance criteria:**
+- [ ] Admin can set FanCourier credentials (username, password, environment: test/production) via
+      a settings page or environment variables, encrypted at rest.
+- [ ] Seller generates a label: the FanCourier API assigns a tracking number, returns a PDF URL,
+      and the `SellerOrder.trackingNumber` is populated with the real carrier number.
+- [ ] Order detail page shows the tracking number and a working link to FanCourier's public
+      tracking page, correctly formatted for the carrier.
+- [ ] A background job fetches tracking status from FanCourier for all active shipments, updates
+      `lastTrackedAt`, and sends the buyer an email when status changes (e.g., "Your parcel is on
+      its way" when status moves to "in transit").
+- [ ] If the FanCourier API is unreachable, the seller gets a clear error and can retry or fall
+      back to manual entry with a warning.
+- [ ] Tracking statuses are displayed to the buyer in plain language (e.g., "In transit",
+      "Out for delivery", "Delivered") with the last update time.
+- [ ] Concurrent label generation (two sellers generating for different orders simultaneously)
+      never causes a race condition or duplicate shipment.
+- [ ] A seller who updates a `SellerOrder` (e.g., changing the address) after a label is generated
+      sees that the tracking number is now stale and is given the option to cancel the shipment and
+      regenerate (or a warning, TBD by UX).
+- [ ] Test mode (FanCourier sandbox) works without production credentials, and mode is never
+      mixed (all calls in one request use the same mode).
+- [ ] GDPR: order data (shipping address) is anonymized per the existing flow; the tracking number
+      and label URL are kept in financial records.
+
+**Edge cases:**
+- Address validation: FanCourier API may reject an address as undeliverable. The seller is told
+  why (e.g., "Invalid postal code") and must correct it before retrying.
+- Tracking not updating: FanCourier's tracking data lags by a few hours. The buyer sees
+  "Last update: N hours ago" to set expectations.
+- Parcel exception (lost, damaged, returned): status changes to an exception state. Buyer is
+  notified and the seller is alerted in their dashboard. Dispute/ticketing flow (Release 3 item 4)
+  would handle the resolution path.
+- Return shipments: out of scope for v1 (seller uses manual return label for now).
+- Cancelling a shipped order: the tracking number is kept for financial records, but FanCourier
+  must be notified that the shipment should not proceed (if it hasn't shipped yet). If it has
+  already shipped, a return label is the resolution (future).
+- Multiple sellers in one order: each `SellerOrder` can have a different carrier in the future,
+  but v1 assumes all orders use FanCourier (hardcoded in UI).
+
+---
+
 ## Cross-cutting notes
 
-- Both items add a dependency/data surface that needs matching updates to
-  [security.md](security.md) (public suggest endpoint + coupon-code rate limiting),
-  [data-model.md](data-model.md) (`Coupon`, `CouponRedemption`, new `Order`/`SellerOrder`
-  columns), and [operations.md](operations.md) (Meilisearch hosting, backups, reindex job).
-- Suggested order: search first (no money-path changes), coupons second (touches checkout,
-  payouts, and refunds, so it benefits from CI already being in place).
+- All four items add dependencies/data surfaces that need matching updates to
+  [security.md](security.md) (public suggest endpoint, coupon-code rate limiting, FanCourier
+  credentials),
+  [data-model.md](data-model.md) (`Coupon`, `CouponRedemption`, `Subscription`, new `Order`/`SellerOrder`
+  columns), and [operations.md](operations.md) (Meilisearch hosting, FanCourier API, Inngest tracking
+  job).
+- Suggested order: search first (no money-path changes), coupons second (touches checkout/payouts/refunds,
+  benefits from CI), shipping/subscription third (touches order totals), carrier integration fourth
+  (builds on stable order/seller-order model).

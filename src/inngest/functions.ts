@@ -11,6 +11,7 @@ import { reindexAllProducts, syncTarget } from "@/server/services/search-service
 import type { SearchSyncTarget } from "@/lib/search-sync";
 import { sendEmail, type SendEmailInput } from "@/lib/email";
 import type { ImportMode } from "@/generated/prisma/enums";
+import { syncCarrierTracking } from "@/server/services/carrier-service";
 
 export const processProductImportFunction = inngest.createFunction(
   { id: "process-product-import", retries: 3, triggers: { event: "product-import/requested" } },
@@ -108,4 +109,11 @@ export const syncSearchIndexFunction = inngest.createFunction(
 export const reindexAllProductsFunction = inngest.createFunction(
   { id: "reindex-all-products", retries: 3, triggers: { cron: "30 3 * * *" } },
   async () => reindexAllProducts()
+);
+
+// Poll FanCourier for tracking status of all active shipments every 2 hours, updating the
+// database and triggering notifications on status changes. Runs at :00 and :30 of every even hour.
+export const syncCarrierTrackingFunction = inngest.createFunction(
+  { id: "sync-carrier-tracking", retries: 2, triggers: { cron: "0,30 */2 * * *" } },
+  async () => syncCarrierTracking()
 );
