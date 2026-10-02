@@ -3,6 +3,9 @@ import { beforeEach, vi } from "vitest";
 
 config({ path: ".env.local" });
 
+// CI has no .env.local; carrier credentials are encrypted at rest, so a throwaway key is needed.
+process.env.CARRIER_ENCRYPTION_KEY ??= Buffer.alloc(32, 7).toString("base64");
+
 // next-auth transitively imports "next/server", which only resolves inside Next's own bundler,
 // not under plain Vite/Node — this breaks loading any file that imports @/lib/auth (seller-
 // service.ts, and everything that imports *that*: category/order/seller-order-service.ts) even

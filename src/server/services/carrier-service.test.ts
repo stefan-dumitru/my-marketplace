@@ -28,6 +28,7 @@ async function createOrder(buyerId: string, sellerId: string, variantId: string)
         create: [
           {
             sellerId,
+            status: "confirmed",
             subtotal: 100,
             commissionAmount: 10,
             payoutAmount: 90,
