@@ -9,13 +9,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { markShippedAction } from "@/app/(seller)/seller/orders/actions";
 
-export function ShipOrderForm({ sellerOrderId }: { sellerOrderId: string }) {
+export function ShipOrderForm({
+  sellerOrderId,
+  defaultTrackingNumber,
+}: {
+  sellerOrderId: string;
+  defaultTrackingNumber?: string;
+}) {
   const [formError, setFormError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<ShipOrderInput>({ resolver: zodResolver(shipOrderSchema) });
+  } = useForm<ShipOrderInput>({
+    resolver: zodResolver(shipOrderSchema),
+    defaultValues: { trackingNumber: defaultTrackingNumber ?? "" },
+  });
 
   const onSubmit = async (data: ShipOrderInput) => {
     setFormError(null);

@@ -1,77 +1,58 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import type { FanCourierEnvironment } from "@/lib/fancourier";
 
 /**
- * Data access for CarrierConfig: admin-configured shipping carrier credentials (encrypted).
+ * Data access for CarrierConfig: admin-configured shipping carrier credentials.
  * v1 scope: one config per carrier/environment pair (FanCourier test + FanCourier production).
- * Credentials are stored encrypted in the database; decryption happens in the carrier service.
+ * apiUsername and apiPassword are AES-256-GCM encrypted at rest (lib/crypto.ts); only
+ * getCarrierConfig decrypts, and only server-side callers that need to call the carrier use it.
  */
 
 export async function getCarrierConfig(
   carrier: "fancourier" = "fancourier",
   environment: FanCourierEnvironment = "test"
 ) {
-  return prisma.carrierConfig.findUnique({
-    where: {
-      carrier_environment: { carrier, environment },
-    },
+  const row = await prisma.carrierConfig.findUnique({
+    where: { carrier_environment: { carrier, environment } },
   });
+  if (!row) return null;
+  return { ...row, apiUsername: decryptSecret(row.apiUsername), apiPassword: decryptSecret(row.apiPassword) };
 }
 
+/** Admin-listing view: never includes the password; username is decrypted for display. */
 export async function getAllCarrierConfigs() {
-  return prisma.carrierConfig.findMany({
-    orderBy: { createdAt: "asc" },
-  });
+  const rows = await prisma.carrierConfig.findMany({ orderBy: { createdAt: "asc" } });
+  return rows.map((r) => ({
+    id: r.id,
+    carrier: r.carrier,
+    environment: r.environment,
+    apiUsername: decryptSecret(r.apiUsername),
+    isActive: r.isActive,
+    lastVerifiedAt: r.lastVerifiedAt,
+  }));
 }
 
-export async function createCarrierConfig(
-  carrier: "fancourier" = "fancourier",
-  environment: FanCourierEnvironment = "test",
+export async function upsertCarrierConfig(
+  carrier: "fancourier",
+  environment: FanCourierEnvironment,
   apiUsername: string,
   apiPassword: string
 ) {
-  return prisma.carrierConfig.create({
-    data: {
-      carrier,
-      environment,
-      apiUsername, // Will be encrypted at rest by database or app-level encryption (TODO: implement)
-      apiPassword, // Encrypted
-      isActive: true,
-    },
-  });
-}
-
-export async function updateCarrierConfig(
-  configId: string,
-  updates: {
-    apiUsername?: string;
-    apiPassword?: string;
-    environment?: FanCourierEnvironment;
-    isActive?: boolean;
-    lastVerifiedAt?: Date | null;
-  }
-) {
-  return prisma.carrierConfig.update({
-    where: { id: configId },
-    data: updates,
-  });
-}
-
-export async function setCarrierConfigVerified(configId: string) {
-  return updateCarrierConfig(configId, {
+  const data = {
+    apiUsername: encryptSecret(apiUsername),
+    apiPassword: encryptSecret(apiPassword),
+    isActive: true,
     lastVerifiedAt: new Date(),
+  };
+  return prisma.carrierConfig.upsert({
+    where: { carrier_environment: { carrier, environment } },
+    create: { carrier, environment, ...data },
+    update: data,
   });
 }
 
 export async function deactivateCarrierConfig(configId: string) {
-  return updateCarrierConfig(configId, {
-    isActive: false,
-  });
-}
-
-export async function deleteCarrierConfig(configId: string) {
-  return prisma.carrierConfig.delete({
-    where: { id: configId },
-  });
+  return prisma.carrierConfig.update({ where: { id: configId }, data: { isActive: false } });
 }

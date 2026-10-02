@@ -63,6 +63,10 @@ export async function generateShippingLabel(
       };
     }
 
+    if (sellerOrder.labelUrl) {
+      return { ok: false, error: "A label has already been generated for this order." };
+    }
+
     // Get the FanCourier config (default to test environment in v1)
     const config = await getCarrierConfig("fancourier", "test");
     if (!config || !config.isActive) {

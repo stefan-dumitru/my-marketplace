@@ -85,7 +85,7 @@ export function ShippingTracker({ trackingNumber, carrierStatus, labelUrl, lastT
 
         <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
           <p>
-            Tracking updates are refreshed every 2 hours. You'll receive an email notification when your parcel
+            Tracking updates are refreshed every 2 hours. You&apos;ll receive an email notification when your parcel
             changes status.
           </p>
         </div>

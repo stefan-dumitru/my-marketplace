@@ -4,13 +4,12 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { CarrierConfig } from "@/generated/prisma/client";
 import { updateCarrierSettingsAction } from "./actions";
 
 type Props = {
   carrier: "fancourier";
   environment: "test" | "production";
-  initialConfig?: CarrierConfig | null;
+  initialConfig?: { apiUsername: string; isActive: boolean } | null;
 };
 
 export function CarrierSettingsForm({ carrier, environment, initialConfig }: Props) {
@@ -18,7 +17,7 @@ export function CarrierSettingsForm({ carrier, environment, initialConfig }: Pro
   const [success, setSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [apiUsername, setApiUsername] = useState(initialConfig?.apiUsername ?? "");
-  const [apiPassword, setApiPassword] = useState(initialConfig?.apiPassword ?? "");
+  const [apiPassword, setApiPassword] = useState("");
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,10 +29,10 @@ export function CarrierSettingsForm({ carrier, environment, initialConfig }: Pro
         environment,
         apiUsername,
         apiPassword,
-        configId: initialConfig?.id,
       });
       if (result.ok) {
         setSuccess(true);
+        setApiPassword("");
       } else {
         setError(result.error);
       }
@@ -62,18 +61,18 @@ export function CarrierSettingsForm({ carrier, environment, initialConfig }: Pro
           id={`password-${environment}`}
           value={apiPassword}
           onChange={(e) => setApiPassword(e.target.value)}
-          placeholder="Your FanCourier API password"
+          placeholder={initialConfig ? "Leave blank to keep current password" : "Your FanCourier API password"}
           type="password"
           disabled={isPending}
-          required
+          required={!initialConfig}
         />
-        <p className="text-xs text-muted-foreground">Encrypted at rest, never exposed to the frontend</p>
+        <p className="text-xs text-muted-foreground">Encrypted at rest, never sent back to the browser</p>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {success && (
         <p className="text-sm text-green-600">
-          Settings saved successfully. Credentials are now {initialConfig?.isActive ? "active" : "pending verification"}.
+          Credentials verified and saved.
         </p>
       )}
 

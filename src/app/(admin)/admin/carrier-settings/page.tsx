@@ -42,10 +42,10 @@ export default async function CarrierSettingsPage() {
       <Card className="p-6 text-sm">
         <h3 className="mb-2 font-semibold">About FanCourier</h3>
         <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-          <li>FanCourier is Romania's largest parcel carrier, covering domestic and international shipments.</li>
+          <li>FanCourier is Romania&apos;s largest parcel carrier, covering domestic and international shipments.</li>
           <li>You need a FanCourier business account with API access to use this feature.</li>
+          <li>Credentials are encrypted at rest and never sent back to the browser.</li>
           <li>Test credentials are used in the test environment; production credentials are used live.</li>
-          <li>Credentials are encrypted at rest and never exposed to the frontend.</li>
           <li>Once configured, sellers can generate real shipping labels from the order page.</li>
         </ul>
       </Card>

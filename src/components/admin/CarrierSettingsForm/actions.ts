@@ -1,73 +1,55 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
-import { createCarrierConfig, updateCarrierConfig } from "@/server/data/carrier-config";
+import { getCarrierConfig, upsertCarrierConfig } from "@/server/data/carrier-config";
 import { createFanCourierClient } from "@/lib/fancourier";
-import { setCarrierConfigVerified } from "@/server/data/carrier-config";
+import { logger } from "@/lib/logger";
 
-export type UpdateCarrierSettingsInput = {
-  carrier: "fancourier";
-  environment: "test" | "production";
-  apiUsername: string;
-  apiPassword: string;
-  configId?: string;
-};
+const inputSchema = z.object({
+  carrier: z.literal("fancourier"),
+  environment: z.enum(["test", "production"]),
+  apiUsername: z.string().min(1).max(200),
+  // Blank means "keep the stored password" — only allowed when a config already exists.
+  apiPassword: z.string().max(200),
+});
 
-export type UpdateCarrierSettingsResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type UpdateCarrierSettingsInput = z.infer<typeof inputSchema>;
+
+export type UpdateCarrierSettingsResult = { ok: true } | { ok: false; error: string };
 
 export async function updateCarrierSettingsAction(
   input: UpdateCarrierSettingsInput
 ): Promise<UpdateCarrierSettingsResult> {
-  // Independently re-verified — this Action is its own entry point
   const session = await auth();
   if (!session || session.user.role !== "admin") {
     redirect("/auth/login?callbackUrl=/admin/carrier-settings");
   }
 
+  const parsed = inputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { carrier, environment, apiUsername } = parsed.data;
+
   try {
-    // Verify credentials before saving
-    const client = createFanCourierClient(
-      input.apiUsername,
-      input.apiPassword,
-      input.environment
-    );
-    const verified = await client.verifyCredentials();
-    if (!verified) {
-      return {
-        ok: false,
-        error: "Failed to verify FanCourier credentials. Check your username and password.",
-      };
+    let apiPassword = parsed.data.apiPassword;
+    if (!apiPassword) {
+      const existing = await getCarrierConfig(carrier, environment);
+      if (!existing) return { ok: false, error: "API password is required." };
+      apiPassword = existing.apiPassword;
     }
 
-    // Create or update the config
-    if (input.configId) {
-      await updateCarrierConfig(input.configId, {
-        apiUsername: input.apiUsername,
-        apiPassword: input.apiPassword,
-      });
-    } else {
-      await createCarrierConfig(
-        input.carrier,
-        input.environment,
-        input.apiUsername,
-        input.apiPassword
-      );
+    const client = createFanCourierClient(apiUsername, apiPassword, environment);
+    if (!(await client.verifyCredentials())) {
+      return { ok: false, error: "Failed to verify FanCourier credentials. Check your username and password." };
     }
 
-    // Mark as verified after successful save
-    if (input.configId) {
-      await setCarrierConfigVerified(input.configId);
-    }
-
+    await upsertCarrierConfig(carrier, environment, apiUsername, apiPassword);
+    revalidatePath("/admin/carrier-settings");
     return { ok: true };
   } catch (err) {
-    console.error("Failed to update carrier settings:", err);
-    return {
-      ok: false,
-      error: "Failed to save settings. Please try again.",
-    };
+    logger.error({ err }, "Failed to update carrier settings");
+    return { ok: false, error: "Failed to save settings. Please try again." };
   }
 }

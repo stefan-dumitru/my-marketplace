@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ export function GenerateShippingLabelForm({
   defaultRecipientCounty,
   defaultRecipientPostalCode,
 }: Props) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [labelUrl, setLabelUrl] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export function GenerateShippingLabelForm({
         setSuccess(true);
         setTrackingNumber(result.trackingNumber);
         setLabelUrl(result.labelUrl);
+        router.refresh();
       } else {
         setError(result.error);
       }

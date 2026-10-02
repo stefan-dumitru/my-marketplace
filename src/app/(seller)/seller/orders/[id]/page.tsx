@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/format";
 import { ShipOrderForm } from "@/components/seller/ShipOrderForm";
 import { CancelOrderButton } from "@/components/seller/CancelOrderButton";
 import { DeliverOrderButton } from "@/components/seller/DeliverOrderButton";
+import { GenerateShippingLabelForm } from "@/components/seller/GenerateShippingLabel";
 import { ReturnRequestActions } from "@/components/seller/ReturnRequestActions";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -98,8 +99,40 @@ export default async function SellerOrderDetailPage({ params }: Props) {
         <Card className="flex flex-col gap-4 p-4">
           <div>
             <p className="mb-2 text-sm font-medium">Mark as shipped</p>
-            <ShipOrderForm sellerOrderId={sellerOrder.id} />
+            <ShipOrderForm
+              sellerOrderId={sellerOrder.id}
+              defaultTrackingNumber={sellerOrder.trackingNumber ?? undefined}
+            />
           </div>
+          {sellerOrder.labelUrl ? (
+            <div className="border-t border-border pt-4 text-sm">
+              <p className="mb-1 font-medium">Shipping label</p>
+              <a
+                href={sellerOrder.labelUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                Download PDF label
+              </a>
+              <p className="mt-1 text-muted-foreground">
+                Tracking number {sellerOrder.trackingNumber} is filled in above — confirm to mark as shipped.
+              </p>
+            </div>
+          ) : (
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-sm font-medium">Generate FanCourier label</p>
+              <GenerateShippingLabelForm
+                sellerOrderId={sellerOrder.id}
+                defaultRecipientName={address.recipientName}
+                defaultRecipientPhone={address.phone}
+                defaultRecipientAddress={[address.line1, address.line2].filter(Boolean).join(", ")}
+                defaultRecipientCity={address.city}
+                defaultRecipientCounty={address.county}
+                defaultRecipientPostalCode={address.postalCode}
+              />
+            </div>
+          )}
           <div className="border-t border-border pt-4">
             <p className="mb-2 text-sm font-medium">Cancel order</p>
             <p className="mb-2 text-sm text-muted-foreground">
@@ -116,6 +149,19 @@ export default async function SellerOrderDetailPage({ params }: Props) {
           <div>
             <p className="font-medium">Tracking number</p>
             <p className="text-muted-foreground">{sellerOrder.trackingNumber}</p>
+            {sellerOrder.carrierStatus && (
+              <p className="mt-1 text-muted-foreground">Carrier status: {sellerOrder.carrierStatus}</p>
+            )}
+            {sellerOrder.labelUrl && (
+              <a
+                href={sellerOrder.labelUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-block text-primary underline"
+              >
+                Download PDF label
+              </a>
+            )}
             {sellerOrder.shippedAt && (
               <p className="mt-1 text-muted-foreground">
                 Shipped {new Date(sellerOrder.shippedAt).toLocaleString("ro-RO")}

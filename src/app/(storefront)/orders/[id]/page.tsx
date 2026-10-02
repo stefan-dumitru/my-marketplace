@@ -4,6 +4,7 @@ import { getOrderByIdForBuyer } from "@/server/data/orders";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { formatPrice } from "@/lib/format";
+import { ShippingTracker } from "@/components/buyer/ShippingTracker";
 import { ReviewForm } from "@/components/review/ReviewForm";
 import { ReturnRequestForm } from "@/components/order/ReturnRequestForm";
 
@@ -82,6 +83,13 @@ export default async function OrderDetailPage({ params }: Props) {
                 (sellerOrder.refundedAt ? " — Refunded" : " — Refund pending")}
             </p>
           </div>
+          {sellerOrder.trackingNumber && sellerOrder.status !== "cancelled" && (
+            <ShippingTracker
+              trackingNumber={sellerOrder.trackingNumber}
+              carrierStatus={sellerOrder.carrierStatus}
+              lastTrackedAt={sellerOrder.lastTrackedAt}
+            />
+          )}
           <div className="divide-y">
             {sellerOrder.items.map((item) => (
               <div key={item.id} className="flex flex-col gap-2 py-2">

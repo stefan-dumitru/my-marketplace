@@ -103,7 +103,7 @@ describe("Carrier Service", () => {
       const sellerOrder = await createOrder(buyer.id, seller.profile.id, product.variants[0].id);
 
       // Set up a mock FanCourier config
-      await carrierConfig.createCarrierConfig("fancourier", "test", "test-user", "test-pass");
+      await carrierConfig.upsertCarrierConfig("fancourier", "test", "test-user", "test-pass");
 
       // Mock the FanCourier API call
       vi.spyOn(global, "fetch").mockResolvedValueOnce(
