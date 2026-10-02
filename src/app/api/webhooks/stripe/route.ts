@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { createAuditLog } from "@/server/data/audit-log";
 import { notifyOrderConfirmed, notifyPaymentFailed } from "@/server/services/order-service";
 import { notifyAdmins } from "@/server/services/notification-service";
+import { handleSubscriptionPaymentFailed, syncSubscriptionFromStripe } from "@/server/services/subscription-service";
 import type Stripe from "stripe";
 
 // Next's App Router Route Handlers never auto-parse the body — req.text() gives the exact
@@ -30,6 +31,16 @@ export async function POST(req: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
+
+        // Subscription checkouts share this event with order payments but carry no orderId; the
+        // subscription is rewritten from Stripe's own record, so redelivery is harmless.
+        if (session.mode === "subscription") {
+          const subscriptionId =
+            typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+          if (subscriptionId) await syncSubscriptionFromStripe(subscriptionId);
+          break;
+        }
+
         const orderId = session.metadata?.orderId;
         if (!orderId) break;
 
@@ -92,6 +103,18 @@ export async function POST(req: Request) {
           });
           await notifyPaymentFailed(orderId);
         }
+        break;
+      }
+
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+        await syncSubscriptionFromStripe(subscription.id);
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        await handleSubscriptionPaymentFailed(event.data.object as Stripe.Invoice);
         break;
       }
 

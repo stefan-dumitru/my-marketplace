@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { AddressForm } from "@/components/checkout/AddressForm";
 import { cartSubtotalCents, resolveCartCoupon } from "@/server/services/coupon-service";
 import { fromCents } from "@/lib/coupons";
-import { shippingCentsForSellerCount } from "@/lib/shipping";
+import { getShippingQuote } from "@/server/services/subscription-service";
 import { formatPrice } from "@/lib/format";
 
 export default async function CheckoutPage() {
@@ -25,7 +25,8 @@ export default async function CheckoutPage() {
   const subtotalCents = cartSubtotalCents(items);
   const discountCents = couponState.status === "applied" ? couponState.discountCents : 0;
   const sellerCount = new Set(items.map((i) => i.productVariant.product.seller.id)).size;
-  const shippingCents = shippingCentsForSellerCount(sellerCount);
+  const shipping = await getShippingQuote(session.user.id, sellerCount);
+  const shippingCents = shipping.chargedCents;
   // savedAddresses is already ordered default-first, so this is free — no separate query.
   const defaultAddress = savedAddresses.find((a) => a.isDefault) ?? null;
 
@@ -55,7 +56,7 @@ export default async function CheckoutPage() {
           )}
           <div className="flex justify-between text-muted-foreground">
             <span>Shipping ({sellerCount} seller{sellerCount === 1 ? "" : "s"})</span>
-            <span>{formatPrice(fromCents(shippingCents))}</span>
+            <span>{shipping.waived ? "Free (subscription)" : formatPrice(fromCents(shippingCents))}</span>
           </div>
           <div className="mt-2 flex justify-between border-t border-border pt-2 font-semibold">
             <span>Total</span>

@@ -109,6 +109,16 @@ Relevant here: product images, seller store logos, (optionally) user avatars.
 - Coupon create/edit/activate/deactivate are admin-only server actions, re-validated server-side
   with the shared Zod schema, and each writes an `AuditLog` row.
 
+## Subscriptions
+
+- Subscribe and "Manage billing" are server actions that re-check the session themselves,
+  require a verified email (subscribe) and are rate-limited per user. The Stripe customer id used
+  for the billing portal always comes from our database for the signed-in user, never from the
+  client, so no one can open another account's portal.
+- Free shipping is decided inside the checkout transaction from our own `Subscription` row; nothing
+  client-supplied can waive shipping. Webhook-driven state is re-fetched from Stripe rather than
+  trusted from the payload, and events for unknown customers are ignored.
+
 ## Threat Model (lightweight)
 
 - Biggest realistic threat: marketplace-specific fraud — a bad-faith seller listing products,

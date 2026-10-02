@@ -6,6 +6,7 @@ import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { inngest } from "@/lib/inngest";
 import { logger } from "@/lib/logger";
 import { SHIPPING_FEE_PER_SELLER } from "@/lib/constants";
+import { isUserEntitledToFreeShipping } from "@/server/data/subscriptions";
 import { allocateDiscountCents, evaluateCoupon, fromCents, toCents, type CouponFailure } from "@/lib/coupons";
 import {
   couponToRules,
@@ -165,6 +166,11 @@ export async function createOrderFromCart(input: {
         bySeller.get(item.sellerId)!.push(item);
       }
 
+      // Decided here, inside the transaction and from the database — never from anything the client
+      // sent — then frozen on each sub-order. A subscriber pays no shipping, but the seller is still
+      // owed the full fee (below): the platform covers it out of subscription revenue.
+      const shippingWaived = await isUserEntitledToFreeShipping(input.buyerId, tx);
+
       const sellerOrdersData = Array.from(bySeller.entries()).map(([sellerId, items]) => {
         const subtotal = items.reduce((sum, i) => sum + i.lineTotal, 0);
         const commissionAmount = items.reduce((sum, i) => sum + i.lineTotal * i.commissionRate, 0);
@@ -177,7 +183,7 @@ export async function createOrderFromCart(input: {
           // The seller keeps the shipping fee in full and no commission is taken on it.
           payoutAmount: subtotal - commissionAmount + SHIPPING_FEE_PER_SELLER,
           shippingFee: SHIPPING_FEE_PER_SELLER,
-          shippingCharged: SHIPPING_FEE_PER_SELLER,
+          shippingCharged: shippingWaived ? 0 : SHIPPING_FEE_PER_SELLER,
           items: {
             create: items.map((i) => ({
               productVariantId: i.productVariantId,

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { anonymizeUserById } from "@/server/data/users";
 import { createAuditLog } from "@/server/data/audit-log";
 import { BCRYPT_COST } from "@/server/services/auth-service";
+import { cancelSubscriptionForErasure } from "@/server/services/subscription-service";
 
 export type DeleteAccountResult = { ok: true } | { ok: false; formError: string };
 
@@ -31,6 +32,15 @@ export async function deleteOwnAccount(userId: string): Promise<DeleteAccountRes
     return {
       ok: false,
       formError: "Seller accounts can't be deleted here — please contact support.",
+    };
+  }
+
+  // Stop billing first: if Stripe can't cancel, erasing the identity would leave an orphaned,
+  // still-charging subscription — so the erasure fails (and can simply be retried) instead.
+  if (!(await cancelSubscriptionForErasure(userId))) {
+    return {
+      ok: false,
+      formError: "We couldn't cancel your subscription right now, so your account wasn't deleted. Please try again shortly.",
     };
   }
 

@@ -50,6 +50,11 @@ vi.mock("@/lib/stripe", () => ({
     // Checkout: tests assert on the exact amounts handed to Stripe, never on a real session.
     coupons: { create: vi.fn(async () => ({ id: "co_test_mock" })) },
     checkout: { sessions: { create: vi.fn(async () => ({ id: "cs_test_mock", url: "https://stripe.test/pay" })) } },
+    // Subscriptions: tests queue their own responses (mockResolvedValueOnce) per scenario.
+    customers: { create: vi.fn(async () => ({ id: "cus_test_mock" })) },
+    subscriptions: { retrieve: vi.fn(), list: vi.fn(async () => ({ data: [] })), cancel: vi.fn(async () => ({})) },
+    billingPortal: { sessions: { create: vi.fn(async () => ({ url: "https://stripe.test/portal" })) } },
+    prices: { retrieve: vi.fn(async () => ({ unit_amount: 2000, recurring: { interval: "month" } })) },
   },
 }));
 

@@ -136,6 +136,14 @@ export default async function OrderDetailPage({ params }: Props) {
         </p>
       </Card>
 
+      {Number(order.shippingAmount) === 0 &&
+        order.sellerOrders.some((so) => Number(so.shippingFee) > 0) && (
+          <div className="flex justify-between border-t border-border pt-4 text-sm text-muted-foreground">
+            <span>Shipping</span>
+            <span>Free (subscription)</span>
+          </div>
+        )}
+
       {Number(order.shippingAmount) > 0 && (
         <div className="flex justify-between border-t border-border pt-4 text-sm text-muted-foreground">
           <span>Shipping</span>

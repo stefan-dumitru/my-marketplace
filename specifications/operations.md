@@ -99,6 +99,12 @@ rollups). This decides how it behaves when it fails.
   from the data layer on product/variant/review/category/seller writes, plus a nightly full
   rebuild (03:30 UTC) as the drift safety net. `npm run search:reindex` rebuilds on demand (also the
   initial backfill). Needs `MEILISEARCH_HOST` + `MEILISEARCH_API_KEY`; unset = feature off.
+- **Stripe Billing (free-shipping subscription):** needs `STRIPE_SUBSCRIPTION_PRICE_ID` (the
+  recurring Price id — not a secret) set in Railway, the Customer Portal enabled with cancellation
+  allowed, and `customer.subscription.updated`, `customer.subscription.deleted` and
+  `invoice.payment_failed` added to the existing webhook endpoint. If Stripe is unreachable the
+  subscribe/manage buttons report "temporarily unavailable"; checkout is unaffected (entitlement is
+  read from our own database, so existing subscribers keep free shipping through a Stripe outage).
 - Timeout/retry policy: every external call has an explicit timeout (target: 10s) and a bounded
   retry count (2–3 attempts with backoff) — never an unbounded wait.
 - Circuit breaker / degradation: non-critical integrations (email) degrade gracefully — queue and

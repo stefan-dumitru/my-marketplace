@@ -9,7 +9,7 @@ import { ResendVerificationButton } from "@/components/auth/ResendVerificationBu
 import { PromoCodeForm } from "@/components/cart/PromoCodeForm";
 import { cartSubtotalCents, resolveCartCoupon } from "@/server/services/coupon-service";
 import { fromCents } from "@/lib/coupons";
-import { shippingCentsForSellerCount } from "@/lib/shipping";
+import { getShippingQuote } from "@/server/services/subscription-service";
 import { formatPrice } from "@/lib/format";
 
 type Props = {
@@ -38,7 +38,8 @@ export default async function CartPage({ searchParams }: Props) {
   }
 
   const subtotalCents = cartSubtotalCents(items);
-  const shippingCents = shippingCentsForSellerCount(sellers.size);
+  const shipping = await getShippingQuote(session.user.id, sellers.size);
+  const shippingCents = shipping.chargedCents;
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
@@ -119,8 +120,13 @@ export default async function CartPage({ searchParams }: Props) {
               <span>
                 Shipping ({sellers.size} seller{sellers.size === 1 ? "" : "s"})
               </span>
-              <span>{formatPrice(fromCents(shippingCents))}</span>
+              <span>{shipping.waived ? "Free (subscription)" : formatPrice(fromCents(shippingCents))}</span>
             </p>
+            {!shipping.waived && (
+              <Link href="/account/subscription" className="text-sm text-muted-foreground underline">
+                Get free shipping on every order with a subscription
+              </Link>
+            )}
             <div className="flex items-center justify-between">
               <p className="text-lg font-semibold">
                 Total: {formatPrice(fromCents(subtotalCents - discountCents + shippingCents))}

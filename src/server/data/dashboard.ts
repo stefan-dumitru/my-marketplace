@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { countActiveSubscribers } from "@/server/data/subscriptions";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
 // Plain server-local Date arithmetic — no timezone library anywhere else in this codebase to
@@ -36,7 +37,7 @@ export async function getSellerDashboardStats(sellerId: string) {
 }
 
 export async function getAdminDashboardStats() {
-  const [gmv, activeSellers, pendingSellerApprovals, ordersToday, takenDownReviews] = await Promise.all([
+  const [gmv, activeSellers, pendingSellerApprovals, ordersToday, takenDownReviews, shippingTotals, activeSubscribers] = await Promise.all([
     prisma.order.aggregate({
       where: { status: "paid", createdAt: { gte: monthStart() } },
       _sum: { totalAmount: true, discountAmount: true, shippingAmount: true },
@@ -47,6 +48,12 @@ export async function getAdminDashboardStats() {
     // Reviews auto-approve on submission (see review-service.ts's submitReview) — there's no
     // pre-publish backlog to flag anymore, so this now tracks post-publish moderation instead.
     prisma.review.count({ where: { status: "rejected" } }),
+    // Fees owed to sellers vs. what buyers actually paid: the gap is what subscriptions cost the platform.
+    prisma.sellerOrder.aggregate({
+      where: { order: { status: "paid", createdAt: { gte: monthStart() } } },
+      _sum: { shippingFee: true, shippingCharged: true },
+    }),
+    countActiveSubscribers(),
   ]);
 
   return {
@@ -60,5 +67,8 @@ export async function getAdminDashboardStats() {
     pendingSellerApprovals,
     ordersToday,
     takenDownReviews,
+    activeSubscribers,
+    shippingSubsidizedThisMonth:
+      Number(shippingTotals._sum.shippingFee ?? 0) - Number(shippingTotals._sum.shippingCharged ?? 0),
   };
 }

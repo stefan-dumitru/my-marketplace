@@ -64,6 +64,10 @@ model User {
   notifications     Notification[]
   couponsCreated    Coupon[]
   couponRedemptions CouponRedemption[]
+  // Set the first time the user starts a subscription checkout; every Stripe event is mapped back
+  // to a user through this (never through client-supplied ids).
+  stripeCustomerId  String?            @unique
+  subscription      Subscription?
 
   @@map("users")
 }
@@ -714,4 +718,23 @@ model CouponRedemption {
   @@index([couponId])
   @@index([userId, couponId])
   @@map("coupon_redemptions")
+}
+
+// The free-shipping subscription (one plan, see specifications/release-3.md §3). Stripe is the
+// source of truth: this row is a synced copy, rewritten from a fresh stripe.subscriptions.retrieve
+// on every relevant webhook, so an out-of-order or redelivered event can't leave it wrong.
+model Subscription {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  stripeSubscriptionId String   @unique
+  // Stripe's own status string (active, trialing, past_due, canceled, unpaid, incomplete, ...).
+  status               String
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("subscriptions")
 }

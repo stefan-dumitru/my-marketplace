@@ -190,8 +190,9 @@ its own: **(A)** a real per-seller shipping fee, **(B)** a monthly Stripe subscr
 - For a subscriber the buyer pays 0, but the **platform still pays the seller the full fee**
   (funded by subscription revenue) — sellers' payouts are identical for subscribers and
   non-subscribers, the same principle as platform-funded coupons.
-- One plan: **19 RON / month**, cancel anytime (placeholder price, held in the Stripe Price object,
-  not in code).
+- One plan: **20 RON / month** (the price you created in Stripe; 19 was the original placeholder),
+  cancel anytime. The price lives in the Stripe Price object and the page reads it from there, not
+  from code.
 
 ### Part A — Shipping fee
 
@@ -234,7 +235,9 @@ dashboard GMV stays goods-only (shipping is excluded, since it belongs to seller
   anything the client sends) and the result is frozen on the order (`shippingCharged`).
 - Cart/checkout show the shipping fee with a "free with subscription" hint for non-subscribers and
   a "Free shipping (subscription)" line for subscribers.
-- Admin dashboard: active subscribers count and subscription revenue this month.
+- Admin dashboard: active subscribers count and "shipping subsidized" this month (fees owed to
+  sellers minus fees buyers paid — the platform's cost of the benefit). Subscription *revenue* is
+  deliberately not duplicated here; it lives in the Stripe dashboard.
 
 **Acceptance criteria:**
 - [ ] A 2-seller cart is charged 2 × the fee; Stripe charge amount == `Order.totalAmount` to the cent.

@@ -129,7 +129,10 @@ export default async function AccountPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Link href="/account/subscription" className={buttonVariants({ variant: "outline" })}>
+          Free shipping
+        </Link>
         <Link href="/orders" className={buttonVariants({ variant: "outline" })}>
           My orders
         </Link>

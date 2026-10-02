@@ -269,6 +269,25 @@ Europe/Bucharest — see that file).
 - **Constraints / invariants:** the payable total never drops below Stripe's minimum charge
   (2.00 RON), so a discount can never strand a created order. Percentage ≤ 100.
 
+### Subscription — Transactional
+
+- **Purpose:** The buyer's free-shipping subscription (one plan). A *synced copy* — Stripe is the
+  source of truth.
+- **Key fields:** userId (unique), stripeSubscriptionId (unique), status (Stripe's own string),
+  currentPeriodEnd, cancelAtPeriodEnd. `User.stripeCustomerId` (unique) maps every Stripe event
+  back to a user.
+- **Lifecycle:** rewritten from a fresh `stripe.subscriptions.retrieve` on every
+  `checkout.session.completed` (subscription mode), `customer.subscription.updated/deleted` and
+  `invoice.payment_failed` — never from the event payload — so redelivered or out-of-order events
+  converge on Stripe's truth. A late event for an old, cancelled subscription can't overwrite a newer
+  live one.
+- **Entitlement (free shipping):** status `active`/`trialing` **and** `currentPeriodEnd` in the
+  future (`lib/subscription.ts`). `past_due`/`unpaid`/`canceled` lose it immediately; a buyer who
+  cancels keeps it until the period ends. Evaluated inside the checkout transaction and frozen on
+  the order (`SellerOrder.shippingCharged`).
+- **Delete/cascade semantics:** never deleted. GDPR erasure cancels the Stripe subscription first
+  (erasure fails if Stripe can't), then keeps the row as `canceled`.
+
 ### Payment — Transactional
 
 - **Purpose:** Record of the Stripe payment backing an `Order`.
