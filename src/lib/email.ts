@@ -1,5 +1,6 @@
 import "server-only";
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { logger } from "@/lib/logger";
 import { inngest } from "@/lib/inngest";
 
@@ -13,6 +14,20 @@ export type SendEmailInput = {
 const resendApiKey = process.env.RESEND_API_KEY;
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
+// SMTP (e.g. Gmail with an app password) takes precedence over Resend when configured, so mail
+// can reach arbitrary recipients without a verified Resend sending domain.
+const smtpUser = process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS;
+const smtp =
+  smtpUser && smtpPass
+    ? nodemailer.createTransport({
+        host: process.env.SMTP_HOST ?? "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT ?? 465),
+        secure: Number(process.env.SMTP_PORT ?? 465) === 465,
+        auth: { user: smtpUser, pass: smtpPass },
+      })
+    : null;
+
 /**
  * Sends via Resend when RESEND_API_KEY is configured. In development with no key, logs the
  * rendered email (including any links it contains) to the console instead, so registration/
@@ -23,6 +38,22 @@ const resend = resendApiKey ? new Resend(resendApiKey) : null;
  * PII.
  */
 export async function sendEmail(input: SendEmailInput): Promise<void> {
+  if (smtp) {
+    try {
+      await smtp.sendMail({
+        from: process.env.EMAIL_FROM ?? `My Marketplace <${smtpUser}>`,
+        to: input.to,
+        subject: input.subject,
+        html: input.html,
+        text: input.text,
+      });
+    } catch (err) {
+      logger.error({ err, to: input.to }, "SMTP email send failed");
+      throw new Error("Failed to send email.");
+    }
+    return;
+  }
+
   if (resend) {
     const from = process.env.EMAIL_FROM;
     if (!from) throw new Error("EMAIL_FROM is not configured.");
