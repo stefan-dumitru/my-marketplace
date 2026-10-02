@@ -20,7 +20,7 @@ export type RegisterResult =
 
 async function sendVerificationEmail(email: string) {
   const token = await createVerificationToken(email);
-  const verifyUrl = `${process.env.NEXTAUTH_URL?.replace(//$/, "")}/auth/verify-email?email=${encodeURIComponent(
+  const verifyUrl = `${process.env.NEXTAUTH_URL?.replace(/\/$/, "")}/auth/verify-email?email=${encodeURIComponent(
     email
   )}&token=${token}`;
 
@@ -118,7 +118,7 @@ export async function requestPasswordReset(email: string) {
   if (!user) return;
 
   const token = await createPasswordResetToken(email);
-  const resetUrl = `${process.env.NEXTAUTH_URL?.replace(//$/, "")}/auth/reset-password?email=${encodeURIComponent(
+  const resetUrl = `${process.env.NEXTAUTH_URL?.replace(/\/$/, "")}/auth/reset-password?email=${encodeURIComponent(
     email
   )}&token=${token}`;
 
