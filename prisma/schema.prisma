@@ -754,6 +754,7 @@ model CarrierConfig {
   carrier        String    @default("fancourier") // "fancourier" for v1; prepared for multi-carrier
   apiUsername    String // Encrypted
   apiPassword    String // Encrypted
+  clientId       String? // FAN Courier sender client id (not secret)
   environment    String    @default("test") // "test" or "production"
   isActive       Boolean   @default(true)
   lastVerifiedAt DateTime?

@@ -26,6 +26,14 @@ const STATUS_DISPLAY: Record<string, { label: string; color: string }> = {
     label: "Delivered",
     color: "bg-green-100 text-green-800",
   },
+  EXCEPTION: {
+    label: "Delivery issue — courier will contact you",
+    color: "bg-red-100 text-red-800",
+  },
+  RETURNED: {
+    label: "Returning to seller",
+    color: "bg-gray-100 text-gray-800",
+  },
 };
 
 export function ShippingTracker({ trackingNumber, carrierStatus, labelUrl, lastTrackedAt }: Props) {

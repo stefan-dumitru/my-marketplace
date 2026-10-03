@@ -9,7 +9,7 @@ import { updateCarrierSettingsAction } from "./actions";
 type Props = {
   carrier: "fancourier";
   environment: "test" | "production";
-  initialConfig?: { apiUsername: string; isActive: boolean } | null;
+  initialConfig?: { apiUsername: string; clientId: string | null; isActive: boolean } | null;
 };
 
 export function CarrierSettingsForm({ carrier, environment, initialConfig }: Props) {
@@ -17,6 +17,7 @@ export function CarrierSettingsForm({ carrier, environment, initialConfig }: Pro
   const [success, setSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [apiUsername, setApiUsername] = useState(initialConfig?.apiUsername ?? "");
+  const [clientId, setClientId] = useState(initialConfig?.clientId ?? "");
   const [apiPassword, setApiPassword] = useState("");
 
   const onSubmit = (e: React.FormEvent) => {
@@ -28,6 +29,7 @@ export function CarrierSettingsForm({ carrier, environment, initialConfig }: Pro
         carrier,
         environment,
         apiUsername,
+        clientId,
         apiPassword,
       });
       if (result.ok) {
@@ -52,7 +54,21 @@ export function CarrierSettingsForm({ carrier, environment, initialConfig }: Pro
           disabled={isPending}
           required
         />
-        <p className="text-xs text-muted-foreground">From your FanCourier business account</p>
+        <p className="text-xs text-muted-foreground">Your selfAWB / FAN Courier API login</p>
+      </div>
+
+      <div>
+        <Label htmlFor={`clientid-${environment}`}>Client ID</Label>
+        <Input
+          id={`clientid-${environment}`}
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          placeholder="e.g. 7032158"
+          inputMode="numeric"
+          disabled={isPending}
+          required
+        />
+        <p className="text-xs text-muted-foreground">Your sender client ID (numeric), from the FAN Courier selfAWB account</p>
       </div>
 
       <div>

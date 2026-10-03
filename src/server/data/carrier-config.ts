@@ -21,6 +21,16 @@ export async function getCarrierConfig(
   return { ...row, apiUsername: decryptSecret(row.apiUsername), apiPassword: decryptSecret(row.apiPassword) };
 }
 
+/**
+ * The config used for live calls. FAN Courier has no sandbox host, so "test" vs "production" only
+ * selects which credentials are used; set CARRIER_ENVIRONMENT=production to ship with the live
+ * account. Defaults to "test" so nothing real is created by accident.
+ */
+export function getActiveCarrierConfig() {
+  const env = process.env.CARRIER_ENVIRONMENT === "production" ? "production" : "test";
+  return getCarrierConfig("fancourier", env);
+}
+
 /** Admin-listing view: never includes the password; username is decrypted for display. */
 export async function getAllCarrierConfigs() {
   const rows = await prisma.carrierConfig.findMany({ orderBy: { createdAt: "asc" } });
@@ -29,6 +39,7 @@ export async function getAllCarrierConfigs() {
     carrier: r.carrier,
     environment: r.environment,
     apiUsername: decryptSecret(r.apiUsername),
+    clientId: r.clientId,
     isActive: r.isActive,
     lastVerifiedAt: r.lastVerifiedAt,
   }));
@@ -38,9 +49,11 @@ export async function upsertCarrierConfig(
   carrier: "fancourier",
   environment: FanCourierEnvironment,
   apiUsername: string,
-  apiPassword: string
+  apiPassword: string,
+  clientId: string
 ) {
   const data = {
+    clientId,
     apiUsername: encryptSecret(apiUsername),
     apiPassword: encryptSecret(apiPassword),
     isActive: true,

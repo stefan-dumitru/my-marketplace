@@ -2,8 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { queueEmail } from "@/lib/email";
-import { createFanCourierClient, type FanCourierShipmentRequest } from "@/lib/fancourier";
-import { getCarrierConfig } from "@/server/data/carrier-config";
+import { createFanCourierClient, FanCourierAPIError, type FanCourierShipmentRequest } from "@/lib/fancourier";
+import { getActiveCarrierConfig } from "@/server/data/carrier-config";
 
 /**
  * Carrier service: high-level orchestration for shipping label generation and tracking.
@@ -67,37 +67,38 @@ export async function generateShippingLabel(
       return { ok: false, error: "A label has already been generated for this order." };
     }
 
-    // Get the FanCourier config (default to test environment in v1)
-    const config = await getCarrierConfig("fancourier", "test");
-    if (!config || !config.isActive) {
-      logger.error({}, "FanCourier config not found or inactive");
+    const config = await getActiveCarrierConfig();
+    if (!config || !config.isActive || !config.clientId) {
+      logger.error({}, "FanCourier config not found, inactive, or missing client id");
       return { ok: false, error: "Shipping service is not configured. Please contact support." };
     }
 
-    // Create a FanCourier client and generate the label
-    const client = createFanCourierClient(config.apiUsername, config.apiPassword, config.environment as "test" | "production");
+    const client = createFanCourierClient(config.apiUsername, config.apiPassword, config.clientId);
     const shipmentRequest: FanCourierShipmentRequest = {
       recipient: {
         name: input.recipientName,
         phone: input.recipientPhone,
-        city: input.recipientCity,
         county: input.recipientCounty,
-        postalCode: input.recipientPostalCode,
+        city: input.recipientCity,
         address: input.recipientAddress,
+        postalCode: input.recipientPostalCode,
       },
       pieces: input.pieces ?? 1,
-      weight: input.weight ?? 0.5, // Default: 500g
+      weight: input.weight ?? 0.5,
+      content: `Order ${sellerOrder.order.orderNumber}`,
       instructions: input.instructions,
     };
 
     const shipment = await client.generateShipment(shipmentRequest);
 
-    // Update the SellerOrder with the tracking number and label URL
+    // The label PDF is fetched on demand through an authenticated route (it contains the
+    // recipient's address), so only the route path is stored.
+    const labelUrl = `/api/seller/orders/${input.sellerOrderId}/label`;
     await prisma.sellerOrder.update({
       where: { id: input.sellerOrderId },
       data: {
         trackingNumber: shipment.awbNumber,
-        labelUrl: shipment.labelUrl,
+        labelUrl,
         carrierStatus: shipment.status,
       },
     });
@@ -110,7 +111,7 @@ export async function generateShippingLabel(
     return {
       ok: true,
       trackingNumber: shipment.awbNumber,
-      labelUrl: shipment.labelUrl,
+      labelUrl,
       status: shipment.status,
     };
   } catch (err) {
@@ -120,7 +121,10 @@ export async function generateShippingLabel(
     );
     return {
       ok: false,
-      error: "Failed to generate label. Please check the recipient address and try again.",
+      error:
+        err instanceof FanCourierAPIError
+          ? `${err.message}. Please check the recipient address and try again.`
+          : "Failed to generate label. Please check the recipient address and try again.",
     };
   }
 }
@@ -145,12 +149,12 @@ export type FetchTrackingOutcome = FetchTrackingResult | FetchTrackingError;
  */
 export async function fetchTracking(trackingNumber: string): Promise<FetchTrackingOutcome> {
   try {
-    const config = await getCarrierConfig("fancourier", "test");
-    if (!config || !config.isActive) {
-      return { ok: false, error: "FanCourier config not found or inactive" };
+    const config = await getActiveCarrierConfig();
+    if (!config || !config.isActive || !config.clientId) {
+      return { ok: false, error: "FanCourier config not found, inactive, or missing client id" };
     }
 
-    const client = createFanCourierClient(config.apiUsername, config.apiPassword, config.environment as "test" | "production");
+    const client = createFanCourierClient(config.apiUsername, config.apiPassword, config.clientId);
     const tracking = await client.getTracking(trackingNumber);
 
     return {
@@ -200,6 +204,8 @@ async function sendTrackingStatusEmail(
       IN_TRANSIT: "Your package is on the way",
       OUT_FOR_DELIVERY: "Your package is out for delivery today",
       DELIVERED: "Your package has been delivered",
+      EXCEPTION: "There is an issue with your delivery — the courier will try to contact you",
+      RETURNED: "Your package is being returned to the seller",
     };
 
     const statusLabel = statusLabels[newStatus] || `Your shipment status: ${newStatus}`;
@@ -349,4 +355,24 @@ export async function syncCarrierTracking(): Promise<{
   );
 
   return { synced, changed, errors };
+}
+
+/**
+ * Fetches the label PDF for a seller order from FAN Courier. Authorization (that the caller owns
+ * the order) is the route's job; this only needs the AWB.
+ */
+export async function fetchLabelPdf(
+  trackingNumber: string
+): Promise<{ ok: true; pdf: ArrayBuffer } | { ok: false; error: string }> {
+  try {
+    const config = await getActiveCarrierConfig();
+    if (!config || !config.isActive || !config.clientId) {
+      return { ok: false, error: "Shipping service is not configured." };
+    }
+    const client = createFanCourierClient(config.apiUsername, config.apiPassword, config.clientId);
+    return { ok: true, pdf: await client.getLabelPdf(trackingNumber) };
+  } catch (err) {
+    logger.error({ err, trackingNumber }, "Failed to fetch label PDF");
+    return { ok: false, error: "Could not download the label from FAN Courier." };
+  }
 }

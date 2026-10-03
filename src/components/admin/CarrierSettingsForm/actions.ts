@@ -12,6 +12,7 @@ const inputSchema = z.object({
   carrier: z.literal("fancourier"),
   environment: z.enum(["test", "production"]),
   apiUsername: z.string().min(1).max(200),
+  clientId: z.string().regex(/^\d{1,12}$/, "Client ID must be numeric"),
   // Blank means "keep the stored password" — only allowed when a config already exists.
   apiPassword: z.string().max(200),
 });
@@ -30,7 +31,7 @@ export async function updateCarrierSettingsAction(
 
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid input." };
-  const { carrier, environment, apiUsername } = parsed.data;
+  const { carrier, environment, apiUsername, clientId } = parsed.data;
 
   try {
     let apiPassword = parsed.data.apiPassword;
@@ -40,12 +41,12 @@ export async function updateCarrierSettingsAction(
       apiPassword = existing.apiPassword;
     }
 
-    const client = createFanCourierClient(apiUsername, apiPassword, environment);
+    const client = createFanCourierClient(apiUsername, apiPassword, clientId);
     if (!(await client.verifyCredentials())) {
-      return { ok: false, error: "Failed to verify FanCourier credentials. Check your username and password." };
+      return { ok: false, error: "Could not log in to FAN Courier. Check the username and password." };
     }
 
-    await upsertCarrierConfig(carrier, environment, apiUsername, apiPassword);
+    await upsertCarrierConfig(carrier, environment, apiUsername, apiPassword, clientId);
     revalidatePath("/admin/carrier-settings");
     return { ok: true };
   } catch (err) {

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import * as carrierService from "@/server/services/carrier-service";
 import * as carrierConfig from "@/server/data/carrier-config";
+import { clearFanCourierTokenCache } from "@/lib/fancourier";
 import { createApprovedSeller, createBuyer, createActiveProduct, createCategory } from "@test/helpers";
 
 const ADDRESS = {
@@ -55,7 +56,8 @@ async function createOrder(buyerId: string, sellerId: string, variantId: string)
 describe("Carrier Service", () => {
   beforeEach(async () => {
     // Mock the FanCourier client to avoid real API calls
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    clearFanCourierTokenCache();
   });
 
   describe("generateShippingLabel", () => {
@@ -104,22 +106,19 @@ describe("Carrier Service", () => {
       const sellerOrder = await createOrder(buyer.id, seller.profile.id, product.variants[0].id);
 
       // Set up a mock FanCourier config
-      await carrierConfig.upsertCarrierConfig("fancourier", "test", "test-user", "test-pass");
+      await carrierConfig.upsertCarrierConfig("fancourier", "test", "test-user", "test-pass", "7032158");
 
-      // Mock the FanCourier API call
-      vi.spyOn(global, "fetch").mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            success: true,
-            data: {
-              awb_number: "FC12345678",
-              label_url: "https://fancourier.ro/labels/FC12345678.pdf",
-              status: "REGISTERED",
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      );
+      // Mock FAN Courier: login, then intern-awb
+      vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes("/login")) {
+          return Response.json({ status: "success", data: { token: "tok", expiresAt: "2099-01-01 00:00:00" } });
+        }
+        if (url.includes("/intern-awb")) {
+          return Response.json({ response: [{ awbNumber: 2228300120233, errors: null }] });
+        }
+        return new Response("unexpected " + url, { status: 500 });
+      });
 
       const result = await carrierService.generateShippingLabel({
         sellerOrderId: sellerOrder.id,
@@ -133,14 +132,14 @@ describe("Carrier Service", () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.trackingNumber).toBe("FC12345678");
-        expect(result.labelUrl).toContain("FC12345678");
+        expect(result.trackingNumber).toBe("2228300120233");
+        expect(result.labelUrl).toBe(`/api/seller/orders/${sellerOrder.id}/label`);
 
         // Verify the database was updated
         const updated = await prisma.sellerOrder.findUnique({
           where: { id: sellerOrder.id },
         });
-        expect(updated?.trackingNumber).toBe("FC12345678");
+        expect(updated?.trackingNumber).toBe("2228300120233");
         expect(updated?.labelUrl).toBeTruthy();
       }
     });

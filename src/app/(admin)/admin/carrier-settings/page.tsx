@@ -45,7 +45,8 @@ export default async function CarrierSettingsPage() {
           <li>FanCourier is Romania&apos;s largest parcel carrier, covering domestic and international shipments.</li>
           <li>You need a FanCourier business account with API access to use this feature.</li>
           <li>Credentials are encrypted at rest and never sent back to the browser.</li>
-          <li>Test credentials are used in the test environment; production credentials are used live.</li>
+          <li>FAN Courier has a single API host: &quot;test&quot; and &quot;production&quot; are just two credential sets. The app uses the test set unless CARRIER_ENVIRONMENT=production is set.</li>
+          <li>You need your selfAWB API username and password plus your numeric sender Client ID.</li>
           <li>Once configured, sellers can generate real shipping labels from the order page.</li>
         </ul>
       </Card>
