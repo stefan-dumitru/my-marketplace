@@ -49,6 +49,9 @@ export function ShipOrderForm({
           aria-invalid={!!errors.trackingNumber}
           {...register("trackingNumber")}
         />
+        <p className="text-xs text-muted-foreground">
+          Must be a FAN Courier AWB. Generating a label fills this in automatically.
+        </p>
         {errors.trackingNumber && (
           <p className="text-sm text-destructive">{errors.trackingNumber.message}</p>
         )}

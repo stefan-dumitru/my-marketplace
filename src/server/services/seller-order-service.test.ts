@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
+import * as carrierService from "@/server/services/carrier-service";
 import { markShipped, markDelivered, cancelSellerOrder } from "@/server/services/seller-order-service";
 import { createBuyer, createApprovedSeller, createCategory, createActiveProduct, placeOrder } from "@test/helpers";
 
@@ -16,6 +17,49 @@ async function placeOrderAndGetSellerOrder(buyerId: string, sellerId: string, ca
   });
   return { product, order, sellerOrder };
 }
+
+// FAN Courier lookups are mocked: any number starting with "TRACK" is a known AWB.
+vi.mock("@/server/services/carrier-service", () => ({
+  fetchTracking: vi.fn(async (n: string) =>
+    n.startsWith("TRACK")
+      ? { ok: true as const, status: "REGISTERED", lastUpdate: new Date(), events: [] }
+      : { ok: false as const, error: "not found" }
+  ),
+}));
+
+describe("markShipped carrier verification", () => {
+  it("rejects a tracking number FAN Courier doesn't know and leaves the order confirmed", async () => {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const admin = await createBuyer();
+    const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
+
+    const result = await markShipped(profile.id, sellerOrder.id, { trackingNumber: "NOPE999" }, admin.id);
+
+    expect(result.ok).toBe(false);
+    const after = await prisma.sellerOrder.findUniqueOrThrow({ where: { id: sellerOrder.id } });
+    expect(after.status).toBe("confirmed");
+  });
+
+  it("trusts the number from a label generated here without a carrier lookup", async () => {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const admin = await createBuyer();
+    const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
+    await prisma.sellerOrder.update({
+      where: { id: sellerOrder.id },
+      data: { trackingNumber: "9999", labelUrl: `/api/seller/orders/${sellerOrder.id}/label` },
+    });
+    vi.mocked(carrierService.fetchTracking).mockClear();
+
+    const result = await markShipped(profile.id, sellerOrder.id, { trackingNumber: "9999" }, admin.id);
+
+    expect(result.ok).toBe(true);
+    expect(carrierService.fetchTracking).not.toHaveBeenCalled();
+  });
+});
 
 describe("markShipped -> markDelivered", () => {
   it("ships a confirmed order then delivers it, sending the buyer a notification", async () => {

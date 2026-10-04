@@ -14,6 +14,7 @@ import {
 import { createAuditLog } from "@/server/data/audit-log";
 import { getSellerDashboardStats } from "@/server/data/dashboard";
 import { notifyUser } from "@/server/services/notification-service";
+import { fetchTracking } from "@/server/services/carrier-service";
 import { splitPage } from "@/lib/pagination";
 import { toCents, fromCents } from "@/lib/coupons";
 
@@ -59,6 +60,23 @@ export async function markShipped(
   const parsed = shipOrderSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
+  }
+
+  // Strict carrier verification: a tracking number is only accepted if it came from a label
+  // generated here, or if FAN Courier itself knows it (looked up under our client id).
+  const existing = await getSellerOrderByIdForSeller(sellerId, sellerOrderId);
+  if (existing?.status === "confirmed") {
+    const fromOurLabel = !!existing.labelUrl && existing.trackingNumber === parsed.data.trackingNumber;
+    if (!fromOurLabel) {
+      const check = await fetchTracking(parsed.data.trackingNumber);
+      if (!check.ok) {
+        return {
+          ok: false,
+          formError:
+            "This tracking number couldn't be verified with FAN Courier. Generate a label above, or enter a valid FAN Courier AWB.",
+        };
+      }
+    }
   }
 
   const updated = await markSellerOrderShippedForSeller(
