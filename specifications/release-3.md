@@ -5,9 +5,8 @@ each is picked up. Same format as [release-2.md](release-2.md): scope, acceptanc
 cases.
 
 Specced so far (build order): **1. Typo-tolerant search + autocomplete → 2. Coupon codes /
-discounts → 3. Shipping cost + free-shipping subscription → 4. Carrier integration (FanCourier).**
-The remaining roadmap items (disputes/ticketing, multi-language) get their own sections here when
-they're started.
+discounts → 3. Shipping cost + free-shipping subscription → 4. Carrier integration (FanCourier) →
+5. Disputes / ticketing.** Multi-language is skipped unless the app expands beyond Romania.
 
 ---
 
@@ -362,6 +361,127 @@ carrier-driven notifications when the parcel moves.
   already shipped, a return label is the resolution (future).
 - Multiple sellers in one order: each `SellerOrder` can have a different carrier in the future,
   but v1 assumes all orders use FanCourier (hardcoded in UI).
+
+### As built (deviations from the plan above)
+
+- **Strict tracking numbers.** A number is only accepted for "mark as shipped" if it came from a
+  label generated in-app, or FAN Courier's tracking API knows it under our client id. The manual
+  entry fallback with a warning was dropped in favor of strictness; other carriers are not
+  supported.
+- **FAN Courier API v2.0 reality:** one host (`api.fancourier.ro`), bearer token from `POST /login`
+  (24h), shipments via `POST /intern-awb`, label PDF via `GET /awb/label`, tracking via
+  `GET /reports/awb/tracking`. There is no sandbox host, so "test" vs "production" are two
+  credential sets; `CARRIER_ENVIRONMENT=production` selects the live one (default `test`).
+- **Credentials:** username and password are encrypted with AES-256-GCM
+  (`CARRIER_ENCRYPTION_KEY`); the numeric `clientId` is stored in plain text. The admin page never
+  receives the password.
+- **Labels are not stored.** The API returns no label URL, so `SellerOrder.labelUrl` holds the
+  route `/api/seller/orders/[id]/label`, which authorizes the seller and streams the PDF from FAN
+  Courier on demand (the label contains the recipient's address).
+- **Address matching:** buyer-typed county and city are resolved against FAN Courier's county and
+  locality lists (diacritics and prefix tolerant, Bucharest sectors collapse to "Bucuresti") before
+  a shipment is created; unknown names produce a specific error for the seller.
+- **Status mapping:** latest event id maps to REGISTERED / IN_TRANSIT / OUT_FOR_DELIVERY /
+  DELIVERED / EXCEPTION / RETURNED (see `mapEventToStatus` in `src/lib/fancourier.ts`).
+- **Not built:** AWB cancellation, return labels, tracking history, label regeneration after an
+  address change.
+
+---
+
+## 5. Disputes / ticketing
+
+**Problem:** The only post-purchase recourse today is the return flow, which only starts after
+delivery and only covers "I want to send it back". There is no path for "it never arrived", "it
+arrived damaged", "wrong item", "not as described" or a billing problem, and no way for the buyer
+and seller to talk to each other or for an admin to rule on it.
+
+**Decisions to confirm before building:**
+- **Ticketing, not live chat.** A structured dispute with a message thread per sub-order. Live chat
+  is out of scope (needs real-time infrastructure and staffing).
+- **One dispute per `SellerOrder`.** Sellers fulfil independently, so a buyer disputes the part
+  from one seller, not the whole order.
+- **Disputes vs returns:** a return request is "change of mind / send it back" and stays as is. A
+  dispute is "something is wrong". If a return on the same sub-order is approved and refunded, a
+  dispute can't be opened (nothing left to resolve); an open dispute blocks a new return request
+  until it is closed.
+- **Who decides:** the seller gets the first chance to resolve; the admin rules when it escalates.
+- **Money:** resolutions that refund reuse the existing Stripe refund path for that sub-order.
+
+**Scope:**
+- **Opening:** the buyer clicks "Report a problem" on a sub-order in their order page. Eligible
+  when the sub-order is `shipped` or `delivered`, or `confirmed` and unshipped for more than 7 days
+  ("seller isn't shipping"). Window: 30 days after delivery, or 60 days after the order if it was
+  never delivered. Fields: reason (`not_received`, `damaged`, `wrong_item`, `not_as_described`,
+  `billing`, `other`), description (required, 20-2000 chars), up to 4 photos (images only, same
+  upload validation as product images).
+- **Thread:** buyer, seller and admin can add messages (text, optional images) while the dispute is
+  open. Every message notifies the other parties in-app and by email (queued through Inngest).
+- **Seller response:** the seller has 3 business days to respond. Options: reply, offer a
+  resolution (full refund, a partial refund of an amount they choose, or a replacement handled
+  outside the app), or contest the claim with a reason.
+- **Escalation:** automatic when the seller doesn't respond in time (Inngest scheduled check), or
+  when the buyer clicks "Escalate to marketplace" after a seller reply. The admin sees it in a
+  queue.
+- **Admin resolution:** full refund, partial refund (amount up to what the buyer actually paid for
+  that sub-order: subtotal minus its coupon share plus its shipping fee), or reject. A reason is
+  required and shown to both parties. Each decision writes an audit-log entry.
+- **Statuses:** `open` → `seller_responded` → `escalated` → `resolved_refund` /
+  `resolved_partial_refund` / `resolved_rejected`, plus `withdrawn` (buyer cancels) and `closed`
+  (seller-offered resolution accepted). Terminal statuses reject further messages.
+- **Visibility:** the buyer sees their disputes in their account; the seller sees a "Disputes" list
+  in the dashboard with an open-count badge; the admin sees an escalated queue with filters.
+- **Data model:** `Dispute` (id, `sellerOrderId` unique, `buyerId`, reason, description, status,
+  `resolutionType`, `resolutionAmount`, `resolutionNote`, `openedAt`, `sellerRespondBy`,
+  `escalatedAt`, `resolvedAt`, `resolvedByUserId`) and `DisputeMessage` (id, `disputeId`,
+  `authorId`, `authorRole`, body, `imageUrls[]`, `createdAt`).
+
+**Acceptance criteria:**
+- [ ] A buyer can open a dispute only on their own eligible sub-order; a second dispute on the same
+      sub-order is rejected, and a non-owner gets a 404, not a 403.
+- [ ] Opening validates reason, description length and images with a shared Zod schema, and is
+      rate-limited per user.
+- [ ] The seller is notified in-app and by email with the response deadline; the buyer gets a
+      confirmation.
+- [ ] Messages are only readable and writable by the buyer, the seller of that sub-order and
+      admins, enforced in the data-access layer (seller scoping by `sellerId`, as elsewhere).
+- [ ] If the seller does not respond by the deadline, the dispute escalates automatically and
+      appears in the admin queue; the buyer can also escalate manually after a seller reply.
+- [ ] An admin full or partial refund creates exactly one Stripe refund (idempotent and safely
+      re-clickable after a transient failure, same pattern as cancellation and returns) for the
+      right amount, and never more than the buyer paid for that sub-order across all refunds.
+- [ ] A rejected or resolved dispute shows the admin's reason to both parties and accepts no more
+      messages.
+- [ ] Every status change by a seller or admin is audit-logged.
+- [ ] The buyer can withdraw an open dispute.
+- [ ] GDPR: account deletion keeps disputes (financial/legal record) but scrubs the buyer's
+      identity and removes message images.
+- [ ] Uploaded images are validated (type, size) before storage and are only served to the parties
+      of the dispute.
+
+**Edge cases:**
+- **Already refunded or cancelled sub-order:** can't be disputed; the button isn't shown.
+- **Seller account suspended mid-dispute:** the dispute escalates immediately.
+- **Seller payout already paid** when a refund is granted: the platform pays the refund and the
+  seller's balance is debited against their next payout (confirm this matches how returns handle
+  it today before building).
+- **Payout timing:** an open dispute should hold that sub-order's payout from the next batch
+  (needs a check in the payout batch query).
+- **Several partial refunds:** the cap applies to the sum of all refunds.
+- **Concurrent resolution:** two admins resolving at once, or the seller offering a refund while an
+  admin rules; resolution is a conditional status update and the first one wins.
+- **Carrier exception:** a FAN Courier `EXCEPTION` or `RETURNED` status could pre-fill or suggest a
+  `not_received` dispute; out of scope for v1, noted for later.
+- **Stripe chargebacks** (a buyer disputing with their bank) are a different thing, handled via
+  Stripe webhooks, and are out of scope here.
+
+**Out of scope:** live chat, disputes spanning several sellers at once, carrier claims, automatic
+reimbursement from the seller, buyer-seller messaging outside a dispute.
+
+**Open questions for you:**
+1. Is a 3 business day seller response window OK, or should it be longer?
+2. Should admins be able to ask the buyer for more evidence (a `needs_info` status), or is the
+   thread enough?
+3. Do you want a fee or penalty on sellers who lose disputes? (Assumed no for v1.)
 
 ---
 

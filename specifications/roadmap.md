@@ -41,14 +41,14 @@ one genuinely heavy item, the mobile-first pass).
 efforts. e-Factura and carrier integration depend on real vendor accounts/contracts, not just
 code, so they'll likely anchor this release's timeline more than anything else on the list.
 
-| Area | Addition | Why |
-|---|---|---|
-| Search | Typo-tolerant/autocomplete search (Meilisearch or similar) | Current Postgres FTS + trigram fallback works but won't scale past a few thousand SKUs |
-| Merchandising | Coupon codes / promotions engine / discounts | Standard commercial lever, currently no discounting mechanism at all |
-| Seller tools | Real shipping-carrier integration (label generation, live tracking) | "Tracking number" is currently a free-text field with no verification |
-| Support | Live chat or a proper dispute/ticketing flow | The only post-purchase recourse today is the return flow — no path for "wrong item," "damaged," billing disputes, etc. |
-| Growth | Multi-language (RO/EN) | Only relevant if expanding beyond Romania — otherwise skip |
-| Merchandising | Free-shipping subscription (Prime-style) — two-part: (1) introduce a real per-seller shipping cost at checkout, since none exists today (Stripe line items are currently built from product price alone), then (2) a Stripe Subscriptions plan that waives it | Proven retention/conversion lever; scoped as two parts because there's nothing to "waive" until a real shipping cost exists, and a multi-seller cart means shipping is naturally a per-`SellerOrder` cost, not a single order-level fee |
+| Area | Addition | Why | Status |
+|---|---|---|---|
+| Search | Typo-tolerant/autocomplete search (Meilisearch or similar) | Current Postgres FTS + trigram fallback works but won't scale past a few thousand SKUs | Done |
+| Merchandising | Coupon codes / promotions engine / discounts | Standard commercial lever, currently no discounting mechanism at all | Done |
+| Seller tools | Real shipping-carrier integration (label generation, live tracking) | "Tracking number" is currently a free-text field with no verification | Built and verified against FAN Courier test account; live tracking and production contract pending |
+| Support | Live chat or a proper dispute/ticketing flow | The only post-purchase recourse today is the return flow — no path for "wrong item," "damaged," billing disputes, etc. | Spec drafted ([release-3.md](release-3.md) section 5), not started |
+| Growth | Multi-language (RO/EN) | Only relevant if expanding beyond Romania — otherwise skip | Skipped unless expanding beyond Romania |
+| Merchandising | Free-shipping subscription (Prime-style) — two-part: (1) introduce a real per-seller shipping cost at checkout, since none exists today (Stripe line items are currently built from product price alone), then (2) a Stripe Subscriptions plan that waives it | Proven retention/conversion lever; scoped as two parts because there's nothing to "waive" until a real shipping cost exists, and a multi-seller cart means shipping is naturally a per-`SellerOrder` cost, not a single order-level fee | Done |
 
 
 ---
