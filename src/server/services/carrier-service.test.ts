@@ -114,6 +114,8 @@ describe("Carrier Service", () => {
         if (url.includes("/login")) {
           return Response.json({ status: "success", data: { token: "tok", expiresAt: "2099-01-01 00:00:00" } });
         }
+        if (url.includes("/reports/counties")) return Response.json({ status: "success", data: [{ name: "Bucuresti" }] });
+        if (url.includes("/reports/localities")) return Response.json({ status: "success", data: [{ name: "Bucuresti" }] });
         if (url.includes("/intern-awb")) {
           return Response.json({ response: [{ awbNumber: 2228300120233, errors: null }] });
         }

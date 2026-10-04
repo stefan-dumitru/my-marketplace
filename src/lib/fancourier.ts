@@ -5,6 +5,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { matchCounty, matchName } from "@/lib/fancourier-address";
 
 export type FanCourierEnvironment = "test" | "production";
 
@@ -14,9 +15,12 @@ const BASE_URL = "https://api.fancourier.ro";
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
 const tokenCache = new Map<string, { token: string; fetchedAt: number }>();
+const LIST_TTL_MS = 24 * 60 * 60 * 1000;
+const listCache = new Map<string, { names: string[]; fetchedAt: number }>();
 
 export function clearFanCourierTokenCache() {
   tokenCache.clear();
+  listCache.clear();
 }
 
 export interface FanCourierShipmentRequest {
@@ -156,8 +160,40 @@ class FanCourierClient {
     throw new FanCourierAPIError(`${what} failed${detail ? `: ${detail.slice(0, 300)}` : ""}`, res.status);
   }
 
+  private async nameList(key: string, path: string, query?: URLSearchParams): Promise<string[]> {
+    const cached = listCache.get(key);
+    if (cached && Date.now() - cached.fetchedAt < LIST_TTL_MS) return cached.names;
+    const res = await this.request("GET", path, { query });
+    if (!res.ok) await this.failure(res, "Address lookup");
+    const json = (await res.json()) as { data?: Array<{ name: string }> };
+    const names = (json.data ?? []).map((d) => d.name);
+    listCache.set(key, { names, fetchedAt: Date.now() });
+    return names;
+  }
+
+  /** Maps buyer-typed county/city to FAN Courier's exact names, or throws a seller-readable error. */
+  async resolveAddress(countyInput: string, cityInput: string): Promise<{ county: string; locality: string }> {
+    const counties = await this.nameList("counties", "/reports/counties");
+    const county = matchCounty(counties, countyInput);
+    if (!county) {
+      throw new FanCourierAPIError(`County "${countyInput}" was not found in FAN Courier's list`);
+    }
+    const localities = await this.nameList(
+      `localities:${county}`,
+      "/reports/localities",
+      new URLSearchParams({ county })
+    );
+    const locality =
+      county === "Bucuresti" ? (localities.find((l) => l === "Bucuresti") ?? localities[0]) : matchName(localities, cityInput);
+    if (!locality) {
+      throw new FanCourierAPIError(`City "${cityInput}" was not found in FAN Courier's list for county ${county}`);
+    }
+    return { county, locality };
+  }
+
   async generateShipment(req: FanCourierShipmentRequest): Promise<FanCourierShipmentResponse> {
     const dims = req.dimensions ?? { length: 30, width: 20, height: 10 };
+    const { county, locality } = await this.resolveAddress(req.recipient.county, req.recipient.city);
     const res = await this.request("POST", "/intern-awb", {
       body: {
         clientId: Number(this.clientId),
@@ -177,8 +213,8 @@ class FanCourierClient {
               phone: req.recipient.phone,
               ...(req.recipient.email ? { email: req.recipient.email } : {}),
               address: {
-                county: req.recipient.county,
-                locality: req.recipient.city,
+                county,
+                locality,
                 street: req.recipient.address,
                 ...(req.recipient.postalCode ? { zipCode: req.recipient.postalCode } : {}),
               },

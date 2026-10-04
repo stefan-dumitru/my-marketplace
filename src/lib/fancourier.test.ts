@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createFanCourierClient, clearFanCourierTokenCache, mapEventToStatus } from "@/lib/fancourier";
+import { matchCounty, matchName, normalizeName } from "@/lib/fancourier-address";
 
 function mockFetch(handlers: Record<string, () => Response>) {
   return vi.spyOn(global, "fetch").mockImplementation(async (input) => {
@@ -21,6 +22,22 @@ describe("mapEventToStatus", () => {
     expect(mapEventToStatus("S2")).toBe("DELIVERED");
     expect(mapEventToStatus("S12")).toBe("EXCEPTION");
     expect(mapEventToStatus("S43")).toBe("RETURNED");
+  });
+});
+
+describe("address matching", () => {
+  it("ignores diacritics, case and administrative prefixes", () => {
+    expect(normalizeName("Județul Brașov")).toBe("brasov");
+    expect(normalizeName("Municipiul Cluj-Napoca")).toBe("cluj napoca");
+    expect(normalizeName("Sector 3")).toBe("");
+  });
+  it("maps buyer-typed names to FAN Courier's names", () => {
+    expect(matchCounty(["Bucuresti", "Cluj"], "București")).toBe("Bucuresti");
+    expect(matchCounty(["Bucuresti", "Cluj"], "Bucharest")).toBe("Bucuresti");
+    expect(matchName(["Cluj-Napoca", "Aghiresu"], "Cluj")).toBe("Cluj-Napoca");
+    expect(matchName(["Razoare(jud Cluj)"], "Răzoare")).toBe("Razoare(jud Cluj)");
+    expect(matchName(["Cluj-Napoca", "Cluj-Sud"], "Cluj")).toBeNull();
+    expect(matchCounty(["Cluj"], "Atlantis")).toBeNull();
   });
 });
 
@@ -73,11 +90,13 @@ describe("FanCourierClient", () => {
   it("throws with the API's errors when shipment creation is rejected", async () => {
     mockFetch({
       "/login": login,
+      "/reports/counties": () => Response.json({ status: "success", data: [{ name: "Cluj" }] }),
+      "/reports/localities": () => Response.json({ status: "success", data: [{ name: "Cluj-Napoca" }] }),
       "/intern-awb": () => Response.json({ response: [{ awbNumber: null, errors: { county: "invalid" } }] }),
     });
     await expect(
       createFanCourierClient("u", "p", "1").generateShipment({
-        recipient: { name: "A", phone: "0700000000", county: "X", city: "Y", address: "Z 1" },
+        recipient: { name: "A", phone: "0700000000", county: "Cluj", city: "Cluj", address: "Z 1" },
         pieces: 1,
         weight: 1,
       })
@@ -104,5 +123,24 @@ describe("FanCourierClient", () => {
     const t = await createFanCourierClient("u", "p", "1").getTracking("123");
     expect(t.status).toBe("DELIVERED");
     expect(t.events[0].status).toBe("H4");
+  });
+});
+
+describe("resolveAddress", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    clearFanCourierTokenCache();
+  });
+
+  it("explains which part of the address is unknown", async () => {
+    mockFetch({
+      "/login": login,
+      "/reports/counties": () => Response.json({ status: "success", data: [{ name: "Cluj" }] }),
+      "/reports/localities": () => Response.json({ status: "success", data: [{ name: "Cluj-Napoca" }] }),
+    });
+    const client = createFanCourierClient("u", "p", "1");
+    await expect(client.resolveAddress("Atlantis", "x")).rejects.toThrow(/County "Atlantis"/);
+    await expect(client.resolveAddress("Cluj", "Nowhere")).rejects.toThrow(/City "Nowhere".*Cluj/);
+    expect(await client.resolveAddress("Județul Cluj", "Cluj")).toEqual({ county: "Cluj", locality: "Cluj-Napoca" });
   });
 });
