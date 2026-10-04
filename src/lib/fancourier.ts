@@ -100,13 +100,19 @@ class FanCourierClient {
       logger.error({ err }, "FanCourier login request failed");
       throw new FanCourierAPIError("Could not reach FAN Courier.");
     }
-    const json = (await res.json().catch(() => null)) as { status?: string; data?: { token?: string } } | null;
-    if (!res.ok || json?.status !== "success" || !json.data?.token) {
+    // Older API docs show `{ token }`, newer ones `{ status: "success", data: { token } }`.
+    const json = (await res.json().catch(() => null)) as {
+      status?: string;
+      token?: string;
+      data?: { token?: string };
+    } | null;
+    const token = json?.data?.token ?? json?.token;
+    if (!res.ok || !token || (json?.status && json.status !== "success")) {
       logger.warn({ status: res.status }, "FanCourier login rejected");
       throw new FanCourierAPIError("FAN Courier login failed. Check the username and password.", res.status);
     }
-    tokenCache.set(cacheKey, { token: json.data.token, fetchedAt: Date.now() });
-    return json.data.token;
+    tokenCache.set(cacheKey, { token, fetchedAt: Date.now() });
+    return token;
   }
 
   private async request(method: string, path: string, init?: { query?: URLSearchParams; body?: unknown }) {

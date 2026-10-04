@@ -35,6 +35,14 @@ describe("FanCourierClient", () => {
     expect(await createFanCourierClient("u", "bad", "1").verifyCredentials()).toBe(false);
   });
 
+  it("accepts the older login response shape { token }", async () => {
+    mockFetch({
+      "/login": () => Response.json({ token: "420|abc" }),
+      "/reports/services": () => Response.json({ status: "success", data: [] }),
+    });
+    expect(await createFanCourierClient("u", "p", "1").verifyCredentials()).toBe(true);
+  });
+
   it("logs in once and reuses the token", async () => {
     const spy = mockFetch({
       "/login": login,
