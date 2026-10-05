@@ -10,6 +10,13 @@ export const addressSchema = z.object({
   county: z.string().trim().min(2, "Enter a county.").max(100),
   postalCode: z.string().trim().min(3, "Enter a postal code.").max(20),
   phone: z.string().trim().min(6, "Enter a phone number.").max(30),
+  // Per order, not per saved address. 255 is FAN Courier's limit for the AWB observation field.
+  deliveryInstructions: z
+    .string()
+    .trim()
+    .max(255, "Delivery instructions can be at most 255 characters.")
+    .optional()
+    .or(z.literal("")),
 });
 
 export type AddressInput = z.infer<typeof addressSchema>;

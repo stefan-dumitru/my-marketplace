@@ -56,6 +56,7 @@ export default async function OrderDetailPage({ params }: Props) {
     postalCode: string;
     country: string;
     phone: string;
+    deliveryInstructions?: string;
   };
 
   return (
@@ -142,6 +143,12 @@ export default async function OrderDetailPage({ params }: Props) {
           <br />
           {address.country} · {address.phone}
         </p>
+        {address.deliveryInstructions && (
+          <p className="mt-3">
+            <span className="font-medium">Delivery instructions: </span>
+            <span className="text-muted-foreground">{address.deliveryInstructions}</span>
+          </p>
+        )}
       </Card>
 
       {Number(order.shippingAmount) === 0 &&

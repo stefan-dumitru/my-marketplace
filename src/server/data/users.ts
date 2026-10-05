@@ -73,6 +73,8 @@ function scrubSnapshot(snapshot: unknown) {
     postalCode: REDACTED,
     country: keep("country"),
     phone: REDACTED,
+    // Free text, often names or door codes — treated like the other identifying fields.
+    deliveryInstructions: "",
   };
 }
 

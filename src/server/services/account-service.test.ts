@@ -55,4 +55,35 @@ describe("deleteOwnAccount", () => {
     const stillThereOrder = await prisma.order.findUnique({ where: { id: order.id } });
     expect(stillThereOrder).not.toBeNull();
   });
+
+  it("scrubs delivery instructions from the retained order snapshot", async () => {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const product = await createActiveProduct(profile.id, category.id);
+    const { createOrderFromCart } = await import("@/server/data/orders");
+    const placed = await createOrderFromCart({
+      buyerId: buyer.id,
+      items: [{ productVariantId: product.variants[0].id, quantity: 1 }],
+      shippingAddressSnapshot: {
+        recipientName: "Maria Popescu",
+        line1: "Strada Test 1",
+        line2: "",
+        city: "Cluj-Napoca",
+        county: "Cluj",
+        postalCode: "400001",
+        country: "România",
+        phone: "0723456789",
+        deliveryInstructions: "Ring Maria's doorbell, code 1234",
+      },
+    });
+    if (!placed.ok) throw new Error("setup failed");
+
+    await deleteOwnAccount(buyer.id);
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: placed.order.id } });
+    const snapshot = order.shippingAddressSnapshot as { deliveryInstructions?: string; recipientName: string };
+    expect(snapshot.deliveryInstructions).toBe("");
+    expect(snapshot.recipientName).toBe("Deleted user");
+  });
 });

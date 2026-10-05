@@ -45,6 +45,7 @@ export default async function SellerOrderDetailPage({ params }: Props) {
     postalCode: string;
     country: string;
     phone: string;
+    deliveryInstructions?: string;
   };
 
   return (
@@ -93,6 +94,12 @@ export default async function SellerOrderDetailPage({ params }: Props) {
           <br />
           {address.country} · {address.phone}
         </p>
+        {address.deliveryInstructions && (
+          <p className="mt-3">
+            <span className="font-medium">Delivery instructions: </span>
+            <span className="text-muted-foreground">{address.deliveryInstructions}</span>
+          </p>
+        )}
       </Card>
 
       {sellerOrder.status === "confirmed" && (
@@ -130,6 +137,7 @@ export default async function SellerOrderDetailPage({ params }: Props) {
                 defaultRecipientCity={address.city}
                 defaultRecipientCounty={address.county}
                 defaultRecipientPostalCode={address.postalCode}
+                defaultInstructions={address.deliveryInstructions}
               />
             </div>
           )}

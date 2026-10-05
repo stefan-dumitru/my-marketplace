@@ -16,6 +16,7 @@ type Props = {
   defaultRecipientCity?: string;
   defaultRecipientCounty?: string;
   defaultRecipientPostalCode?: string;
+  defaultInstructions?: string;
 };
 
 export function GenerateShippingLabelForm({
@@ -26,6 +27,7 @@ export function GenerateShippingLabelForm({
   defaultRecipientCity,
   defaultRecipientCounty,
   defaultRecipientPostalCode,
+  defaultInstructions,
 }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function GenerateShippingLabelForm({
   const [recipientPostalCode, setRecipientPostalCode] = useState(defaultRecipientPostalCode ?? "");
   const [pieces, setPieces] = useState(1);
   const [weight, setWeight] = useState(0.5);
-  const [instructions, setInstructions] = useState("");
+  const [instructions, setInstructions] = useState(defaultInstructions ?? "");
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -222,6 +224,7 @@ export function GenerateShippingLabelForm({
             placeholder="E.g., ring doorbell, leave at gate, etc."
             disabled={isPending}
             rows={3}
+            maxLength={255}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
           <p className="text-xs text-muted-foreground">Optional delivery instructions</p>

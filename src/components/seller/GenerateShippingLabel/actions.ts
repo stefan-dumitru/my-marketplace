@@ -17,7 +17,7 @@ const generateLabelSchema = z.object({
   recipientPostalCode: z.string().min(1),
   pieces: z.number().int().min(1).default(1),
   weight: z.number().positive().default(0.5),
-  instructions: z.string().optional(),
+  instructions: z.string().max(255).optional(),
 });
 
 export type GenerateLabelInput = z.infer<typeof generateLabelSchema>;

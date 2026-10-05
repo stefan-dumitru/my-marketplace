@@ -35,6 +35,7 @@ function toFormValues(address: SavedAddress): AddressInput {
     county: address.county,
     postalCode: address.postalCode,
     phone: address.phone,
+    deliveryInstructions: "",
   };
 }
 
@@ -46,6 +47,7 @@ export function AddressForm({ savedAddresses = [], defaultAddress = null }: Prop
     register,
     handleSubmit,
     reset,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<AddressInput>({
     resolver: zodResolver(addressSchema),
@@ -55,7 +57,14 @@ export function AddressForm({ savedAddresses = [], defaultAddress = null }: Prop
   const handlePick = (id: string) => {
     setSelectedId(id);
     const picked = savedAddresses.find((a) => a.id === id);
-    reset(picked ? toFormValues(picked) : { recipientName: "", line1: "", line2: "", city: "", county: "", postalCode: "", phone: "" });
+    // Instructions belong to this order, so picking a different saved address keeps what was typed.
+    const deliveryInstructions = getValues("deliveryInstructions");
+    reset({
+      ...(picked
+        ? toFormValues(picked)
+        : { recipientName: "", line1: "", line2: "", city: "", county: "", postalCode: "", phone: "" }),
+      deliveryInstructions,
+    });
   };
 
   const onSubmit = async (data: AddressInput) => {
@@ -145,6 +154,23 @@ export function AddressForm({ savedAddresses = [], defaultAddress = null }: Prop
           <Input id="phone" type="tel" aria-invalid={!!errors.phone} {...register("phone")} />
           {errors.phone && <p className="text-sm text-destructive">{errors.phone.message}</p>}
         </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="deliveryInstructions">Delivery instructions (optional)</Label>
+        <textarea
+          id="deliveryInstructions"
+          rows={3}
+          maxLength={255}
+          placeholder="e.g. Leave at the gate, ring the doorbell"
+          aria-invalid={!!errors.deliveryInstructions}
+          className="rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          {...register("deliveryInstructions")}
+        />
+        <p className="text-xs text-muted-foreground">Passed to the seller and the courier. Max 255 characters.</p>
+        {errors.deliveryInstructions && (
+          <p className="text-sm text-destructive">{errors.deliveryInstructions.message}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
