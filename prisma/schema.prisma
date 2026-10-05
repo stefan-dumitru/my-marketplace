@@ -54,20 +54,21 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  sellerProfile     SellerProfile?
-  cart              Cart?
-  wishlist          Wishlist?
-  orders            Order[]
-  reviews           Review[]
-  auditLogs         AuditLog[]
-  addresses         Address[]
-  notifications     Notification[]
-  couponsCreated    Coupon[]
-  couponRedemptions CouponRedemption[]
+  sellerProfile        SellerProfile?
+  cart                 Cart?
+  wishlist             Wishlist?
+  orders               Order[]
+  reviews              Review[]
+  auditLogs            AuditLog[]
+  addresses            Address[]
+  notifications        Notification[]
+  supportConversations SupportConversation[]
+  couponsCreated       Coupon[]
+  couponRedemptions    CouponRedemption[]
   // Set the first time the user starts a subscription checkout; every Stripe event is mapped back
   // to a user through this (never through client-supplied ids).
-  stripeCustomerId  String?            @unique
-  subscription      Subscription?
+  stripeCustomerId     String?               @unique
+  subscription         Subscription?
 
   @@map("users")
 }
@@ -763,4 +764,48 @@ model CarrierConfig {
 
   @@unique([carrier, environment])
   @@map("carrier_configs")
+}
+
+enum SupportConversationStatus {
+  open
+  closed
+}
+
+enum SupportAuthorRole {
+  user
+  admin
+}
+
+// One open conversation per user at a time (partial unique index in the migration — Prisma can't
+// express it). Users only ever see their own; admins see all.
+model SupportConversation {
+  id              String                    @id @default(cuid())
+  userId          String
+  status          SupportConversationStatus @default(open)
+  lastMessageAt   DateTime                  @default(now())
+  userLastReadAt  DateTime?
+  adminLastReadAt DateTime?
+  createdAt       DateTime                  @default(now())
+  closedAt        DateTime?
+
+  user     User             @relation(fields: [userId], references: [id])
+  messages SupportMessage[]
+
+  @@index([status, lastMessageAt])
+  @@index([userId, status])
+  @@map("support_conversations")
+}
+
+model SupportMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  authorId       String
+  authorRole     SupportAuthorRole
+  body           String
+  createdAt      DateTime          @default(now())
+
+  conversation SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("support_messages")
 }

@@ -111,6 +111,8 @@ export async function anonymizeUserById(userId: string, scrubbedPasswordHash: st
     // Leaf, non-financial rows — nothing retained depends on them.
     await tx.address.deleteMany({ where: { userId } });
     await tx.notification.deleteMany({ where: { userId } });
+    // Support chats are non-financial and full of free-text PII: messages cascade with them.
+    await tx.supportConversation.deleteMany({ where: { userId } });
     const cart = await tx.cart.findUnique({ where: { userId }, select: { id: true } });
     if (cart) {
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });

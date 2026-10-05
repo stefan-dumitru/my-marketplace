@@ -4,6 +4,7 @@ import { getWishlistItemCount } from "@/server/data/wishlist";
 import { getUnreadCount } from "@/server/services/notification-service";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { SupportChat } from "@/components/support/SupportChat";
 
 export default async function StorefrontLayout({ children }: LayoutProps<"/">) {
   const session = await auth();
@@ -27,6 +28,7 @@ export default async function StorefrontLayout({ children }: LayoutProps<"/">) {
       />
       <main className="flex flex-1 flex-col">{children}</main>
       <Footer />
+      {session && <SupportChat />}
     </div>
   );
 }

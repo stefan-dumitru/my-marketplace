@@ -2,11 +2,13 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { buttonVariants } from "@/components/ui/button";
+import { getAdminUnreadCount } from "@/server/services/support-service";
 
 export default async function AdminLayout({ children }: LayoutProps<"/">) {
   const session = await auth();
   if (!session) redirect("/auth/login?callbackUrl=/admin/sellers");
   if (session.user.role !== "admin") redirect("/");
+  const unreadSupport = await getAdminUnreadCount();
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-10">
@@ -37,6 +39,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         </Link>
         <Link href="/admin/carrier-settings" className={buttonVariants({ variant: "outline", size: "sm" })}>
           Carrier
+        </Link>
+        <Link href="/admin/support" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Support{unreadSupport > 0 ? ` (${unreadSupport})` : ""}
         </Link>
         <Link href="/admin/audit-log" className={buttonVariants({ variant: "outline", size: "sm" })}>
           Audit Log
