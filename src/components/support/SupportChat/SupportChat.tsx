@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SUPPORT_MESSAGE_MAX_LENGTH } from "@/lib/validations/support";
 import { sendSupportMessageAction } from "./actions";
+import { FAQ_TOPICS } from "./faq";
 
 type Message = { id: string; authorRole: "user" | "admin"; body: string; createdAt: string };
 type ChatResponse = { conversationId: string | null; messages: Message[] };
@@ -21,6 +22,9 @@ export function SupportChat() {
   const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [unread, setUnread] = useState(false);
+  const [asked, setAsked] = useState<string[]>([]);
+  const [humanHint, setHumanHint] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const conversationId = useRef<string | null>(null);
   const lastTimestamp = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -89,7 +93,7 @@ export function SupportChat() {
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, open]);
+  }, [messages, open, asked]);
 
   async function send() {
     const body = draft.trim();
@@ -141,8 +145,38 @@ export function SupportChat() {
       </header>
 
       <div ref={listRef} className="flex flex-1 flex-col gap-2 overflow-y-auto p-4" aria-live="polite">
-        {messages.length === 0 && (
-          <p className="m-auto text-center text-sm text-muted-foreground">{notice ?? "Ask us anything about your orders."}</p>
+        {messages.length === 0 && asked.length === 0 && (
+          <p className="text-sm text-muted-foreground">{notice ?? "Hi! Pick a topic below, or write to us."}</p>
+        )}
+        {messages.length === 0 &&
+          asked.map((id) => {
+            const topic = FAQ_TOPICS.find((t) => t.id === id);
+            if (!topic) return null;
+            return (
+              <div key={id} className="flex flex-col gap-2">
+                <div className="flex justify-end">
+                  <p className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-sm text-primary-foreground">
+                    {topic.question}
+                  </p>
+                </div>
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-sm">
+                    <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Automated answer</p>
+                    <p>{topic.answer}</p>
+                    <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {topic.links.map((l) => (
+                        <a key={l.href} href={l.href} className="text-primary underline">
+                          {l.label}
+                        </a>
+                      ))}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        {messages.length === 0 && humanHint && (
+          <p className="text-sm text-muted-foreground">Type your message below and our team will reply here.</p>
         )}
         {messages.map((m) => (
           <div key={m.id} className={m.authorRole === "user" ? "flex justify-end" : "flex justify-start"}>
@@ -159,6 +193,31 @@ export function SupportChat() {
           </div>
         ))}
       </div>
+
+      {messages.length === 0 && (
+        <div className="flex flex-wrap gap-2 border-t px-3 pt-3">
+          {FAQ_TOPICS.filter((t) => !asked.includes(t.id)).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setAsked((prev) => [...prev, t.id])}
+              className="rounded-full border px-3 py-1 text-xs hover:bg-muted"
+            >
+              {t.question}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setHumanHint(true);
+              inputRef.current?.focus();
+            }}
+            className="rounded-full border border-primary px-3 py-1 text-xs text-primary hover:bg-muted"
+          >
+            Talk to a person
+          </button>
+        </div>
+      )}
 
       <form
         className="flex flex-col gap-2 border-t p-3"
@@ -178,6 +237,7 @@ export function SupportChat() {
           </label>
           <textarea
             id="support-message"
+            ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
