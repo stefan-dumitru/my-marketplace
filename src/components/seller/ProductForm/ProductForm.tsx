@@ -11,6 +11,7 @@ import {
   type CreateProductFormInput,
 } from "@/lib/validations/product";
 import { validateImageFile, MAX_PRODUCT_IMAGES } from "@/lib/uploads";
+import { specificationsSchema } from "@/lib/product-specs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +38,10 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
   const [existingImages, setExistingImages] = useState<string[]>(initialValues?.images ?? []);
   const [newImages, setNewImages] = useState<File[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [specRows, setSpecRows] = useState<{ label: string; value: string }[]>(
+    initialValues?.specifications ?? []
+  );
+  const [specError, setSpecError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     register,
@@ -82,6 +87,21 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
 
   const onSubmit = async (data: CreateProductInput) => {
     setFormError(null);
+    setSpecError(null);
+
+    // Fully blank rows are ignored; a half-filled row is an error the seller can fix.
+    const filledRows = specRows
+      .map((r) => ({ label: r.label.trim(), value: r.value.trim() }))
+      .filter((r) => r.label || r.value);
+    if (filledRows.some((r) => !r.label || !r.value)) {
+      setSpecError("Each specification needs both a name and a value.");
+      return;
+    }
+    const specsParsed = specificationsSchema.safeParse(filledRows);
+    if (!specsParsed.success) {
+      setSpecError("Specifications can have up to 30 rows, names up to 60 and values up to 200 characters.");
+      return;
+    }
 
     const formData = new FormData();
     formData.set("categoryId", data.categoryId);
@@ -90,6 +110,7 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
     formData.set("description", data.description ?? "");
     formData.set("price", String(data.price));
     formData.set("stockQty", String(data.stockQty));
+    formData.set("specifications", JSON.stringify(specsParsed.data));
     existingImages.forEach((url) => formData.append("existingImages", url));
     newImages.forEach((file) => formData.append("images", file));
 
@@ -230,6 +251,54 @@ export function ProductForm({ categories, mode = "create", initialValues }: Prop
         )}
         {imageError && <p className="text-sm text-destructive">{imageError}</p>}
       </div>
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium">Technical specifications (optional)</legend>
+        <p className="text-sm text-muted-foreground">
+          Shown as a table on the product page, e.g. &quot;Weight&quot; – &quot;480 g&quot;.
+        </p>
+        {specRows.map((row, index) => (
+          <div key={index} className="flex items-start gap-2">
+            <Input
+              aria-label={`Specification ${index + 1} name`}
+              placeholder="Name (e.g. Battery)"
+              maxLength={60}
+              value={row.label}
+              onChange={(e) =>
+                setSpecRows((prev) => prev.map((r, i) => (i === index ? { ...r, label: e.target.value } : r)))
+              }
+            />
+            <Input
+              aria-label={`Specification ${index + 1} value`}
+              placeholder="Value (e.g. 20,000 mAh)"
+              maxLength={200}
+              value={row.value}
+              onChange={(e) =>
+                setSpecRows((prev) => prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r)))
+              }
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSpecRows((prev) => prev.filter((_, i) => i !== index))}
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
+        {specError && <p className="text-sm text-destructive">{specError}</p>}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          disabled={specRows.length >= 30}
+          onClick={() => setSpecRows((prev) => [...prev, { label: "", value: "" }])}
+        >
+          Add specification
+        </Button>
+      </fieldset>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">

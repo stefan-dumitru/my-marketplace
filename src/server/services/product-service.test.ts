@@ -236,3 +236,84 @@ describe("updateProduct clearing a low-stock alert", () => {
     expect(stillLow.lowStockAlertedAt).toEqual(alertedAt);
   });
 });
+
+describe("product specifications", () => {
+  const specs = [
+    { label: "Battery", value: "20,000 mAh" },
+    { label: "Weight", value: "480 g" },
+  ];
+
+  async function createWithSpecs(sellerId: string, categoryId: string, specifications?: typeof specs) {
+    await createProduct(sellerId, productInput(categoryId, { specifications }), []);
+    return prisma.product.findUniqueOrThrow({ where: { sellerId_sku: { sellerId, sku: "sku-wm-1" } } });
+  }
+
+  it("stores specifications on create, in order", async () => {
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+
+    const product = await createWithSpecs(profile.id, category.id, specs);
+
+    expect(product.specifications).toEqual(specs);
+  });
+
+  it("leaves specifications empty when none are given", async () => {
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+
+    const product = await createWithSpecs(profile.id, category.id);
+
+    expect(product.specifications).toBeNull();
+  });
+
+  it("rejects malformed specifications and creates nothing", async () => {
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+
+    const result = await createProduct(
+      profile.id,
+      productInput(category.id, { specifications: [{ label: "", value: "x" }] }),
+      []
+    );
+
+    expect(result.ok).toBe(false);
+    expect(await prisma.product.count()).toBe(0);
+  });
+
+  it("replaces specifications on update, keeps them when not provided, and clears them with an empty list", async () => {
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const product = await createWithSpecs(profile.id, category.id, specs);
+    const base = { categoryId: category.id, name: "Wireless Mouse", description: "", brand: "", price: 25, stockQty: 10 };
+
+    await updateProduct(profile.id, product.id, { ...base, specifications: [{ label: "Colour", value: "Black" }] }, []);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).specifications).toEqual([
+      { label: "Colour", value: "Black" },
+    ]);
+
+    await updateProduct(profile.id, product.id, base, []);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).specifications).toEqual([
+      { label: "Colour", value: "Black" },
+    ]);
+
+    await updateProduct(profile.id, product.id, { ...base, specifications: [] }, []);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).specifications).toBeNull();
+  });
+
+  it("does not let another seller change a product's specifications", async () => {
+    const { profile } = await createApprovedSeller();
+    const { profile: intruder } = await createApprovedSeller();
+    const category = await createCategory();
+    const product = await createWithSpecs(profile.id, category.id, specs);
+
+    const result = await updateProduct(
+      intruder.id,
+      product.id,
+      { categoryId: category.id, name: "x1", description: "", brand: "", price: 1, stockQty: 1, specifications: [] },
+      []
+    );
+
+    expect(result.ok).toBe(false);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).specifications).toEqual(specs);
+  });
+});

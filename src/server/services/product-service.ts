@@ -60,7 +60,7 @@ export async function createProduct(
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
   }
-  const { categoryId, name, description, brand, sku, price, stockQty } = parsed.data;
+  const { categoryId, name, description, brand, sku, price, stockQty, specifications } = parsed.data;
 
   const existingSku = await getProductBySellerAndSku(sellerId, sku);
   if (existingSku) {
@@ -79,6 +79,7 @@ export async function createProduct(
     images,
     price,
     stockQty,
+    specifications,
   });
 
   await notifyAdmins({
@@ -105,7 +106,7 @@ export async function updateProduct(
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };
   }
-  const { categoryId, name, description, brand, price, stockQty } = parsed.data;
+  const { categoryId, name, description, brand, price, stockQty, specifications } = parsed.data;
 
   const before = await getProductByIdForSeller(sellerId, productId);
 
@@ -117,6 +118,7 @@ export async function updateProduct(
     images,
     price,
     stockQty,
+    specifications,
   });
 
   if (!updated) {

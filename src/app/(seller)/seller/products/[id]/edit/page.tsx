@@ -1,3 +1,4 @@
+import { parseSpecifications } from "@/lib/product-specs";
 import { notFound } from "next/navigation";
 import { listActiveCategories } from "@/server/data/categories";
 import { getProductForSellerEdit } from "@/server/services/product-service";
@@ -40,6 +41,7 @@ export default async function EditProductPage({ params }: Props) {
           images: product.images,
           price: variant ? variant.price.toString() : "0",
           stockQty: variant ? variant.stockQty.toString() : "0",
+          specifications: parseSpecifications(product.specifications),
         }}
       />
     </div>

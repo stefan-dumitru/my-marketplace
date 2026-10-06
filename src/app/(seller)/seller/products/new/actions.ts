@@ -8,6 +8,17 @@ import { checkRateLimit } from "@/server/data/rate-limit";
 import { uploadImages } from "@/server/services/upload-service";
 import { MAX_PRODUCT_IMAGES } from "@/lib/uploads";
 
+/** FormData carries specifications as a JSON string; absent means "not provided". */
+function readSpecifications(formData: FormData): { ok: true; value: unknown } | { ok: false } {
+  const raw = formData.get("specifications");
+  if (raw === null) return { ok: true, value: undefined };
+  try {
+    return { ok: true, value: JSON.parse(String(raw)) };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function createProductAction(formData: FormData): Promise<CreateProductResult> {
   // Independently re-verified here — this Action is its own entry point and does not inherit
   // the (seller) layout's redirect just because the form that called it was rendered there.
@@ -23,6 +34,9 @@ export async function createProductAction(formData: FormData): Promise<CreatePro
     return { ok: false, formError: "Too many attempts. Please try again shortly." };
   }
 
+  const specs = readSpecifications(formData);
+  if (!specs.ok) return { ok: false, formError: "Specifications were not valid. Please try again." };
+
   const parsed = createProductSchema.safeParse({
     categoryId: formData.get("categoryId"),
     name: formData.get("name"),
@@ -31,6 +45,7 @@ export async function createProductAction(formData: FormData): Promise<CreatePro
     sku: formData.get("sku"),
     price: formData.get("price"),
     stockQty: formData.get("stockQty"),
+    specifications: specs.value,
   });
   if (!parsed.success) {
     return { ok: false, formError: "Please fix the errors above and try again." };

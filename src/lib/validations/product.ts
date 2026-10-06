@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { specificationsSchema } from "@/lib/product-specs";
 
 // Images are deliberately not part of this schema — they arrive as `File`s via FormData and are
 // validated/uploaded by upload-service.ts, not Zod (see ProductForm + the create/update actions).
@@ -10,6 +11,8 @@ export const createProductSchema = z.object({
   sku: z.string().trim().min(1, "SKU is required.").max(64),
   price: z.coerce.number().positive("Price must be greater than 0.").max(999_999),
   stockQty: z.coerce.number().int("Stock must be a whole number.").min(0, "Stock cannot be negative."),
+  // undefined = not provided (leave unchanged on update); [] = clear.
+  specifications: specificationsSchema.optional(),
 });
 
 // Output type (after z.coerce runs) — used server-side and as the service/action contract.

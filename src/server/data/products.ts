@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { DEFAULT_PAGE_SIZE, splitPage } from "@/lib/pagination";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { enqueueSearchSync } from "@/lib/search-sync";
@@ -22,6 +23,7 @@ export function createProductForSeller(
     images: string[];
     price: number;
     stockQty: number;
+    specifications?: { label: string; value: string }[];
   }
 ) {
   return prisma.product.create({
@@ -34,6 +36,7 @@ export function createProductForSeller(
       description: input.description || null,
       brand: input.brand || null,
       images: input.images,
+      ...(input.specifications?.length && { specifications: input.specifications }),
       status: "pending_review",
       variants: {
         create: [{ sku: input.sku, price: input.price, stockQty: input.stockQty }],
@@ -76,6 +79,7 @@ export async function updateProductForSeller(
     images: string[];
     price: number;
     stockQty: number;
+    specifications?: { label: string; value: string }[];
   }
 ) {
   const owned = await prisma.product.findFirst({
@@ -93,6 +97,9 @@ export async function updateProductForSeller(
       description: data.description || null,
       brand: data.brand || null,
       images: data.images,
+      ...(data.specifications !== undefined && {
+        specifications: data.specifications.length ? data.specifications : Prisma.DbNull,
+      }),
       ...(defaultVariantId && {
         variants: {
           update: {
