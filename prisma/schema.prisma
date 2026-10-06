@@ -326,6 +326,8 @@ model Product {
   description       String?
   brand             String?
   images            String[]                 @default([])
+  // Ordered list of { label, value } technical specifications; null/empty = section hidden.
+  specifications    Json?
   status            ProductStatus            @default(draft)
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt

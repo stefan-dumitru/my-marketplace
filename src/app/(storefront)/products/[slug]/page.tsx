@@ -6,6 +6,7 @@ import { VariantPicker } from "@/components/product/VariantPicker";
 import { ProductGallery } from "@/components/product/ProductGallery";
 import { WishlistButton } from "@/components/product/WishlistButton";
 import { ProductCard } from "@/components/product/ProductCard";
+import { ProductSpecifications } from "@/components/product/ProductSpecifications";
 import { ProductReviews } from "@/components/review/ProductReviews";
 import { getCoPurchasedProducts, isProductWishlisted } from "@/server/services/wishlist-service";
 
@@ -65,6 +66,8 @@ export default async function ProductDetailPage({ params }: Props) {
           {session && <WishlistButton productId={product.id} initiallyWishlisted={wishlisted} />}
         </div>
       </div>
+
+      <ProductSpecifications specifications={product.specifications} />
 
       {coPurchased.length > 0 && (
         <div className="flex flex-col gap-3">

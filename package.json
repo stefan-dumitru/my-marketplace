@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "search:reindex": "tsx scripts/reindex-search.ts"
+    "search:reindex": "tsx scripts/reindex-search.ts",
+    "products:specs": "tsx scripts/product-specifications.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
