@@ -128,3 +128,17 @@ export async function deliverSellerOrder(sellerOrderId: string) {
     data: { status: "delivered", deliveredAt: new Date() },
   });
 }
+
+/** A session object shaped like Auth.js's, for tests that stub `auth()` to act as a given user. */
+export function sessionFor(user: { id: string; role: "buyer" | "seller" | "admin"; email?: string }) {
+  return {
+    user: {
+      id: user.id,
+      role: user.role,
+      status: "active" as const,
+      email: user.email ?? "user@example.com",
+      emailVerifiedAt: new Date(),
+    },
+    expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+}
