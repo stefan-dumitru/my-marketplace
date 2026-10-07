@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { listPendingSellerApplications } from "@/server/data/seller-profiles";
 import { getApprovedSellers, getSuspendedSellers } from "@/server/services/seller-service";
 import { SellerApplicationRow } from "@/components/admin/SellerApplicationRow";
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export default async function AdminSellersPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/sellers");
   const { pendingPage: pendingPageParam, approvedPage: approvedPageParam, suspendedPage: suspendedPageParam } =
     await searchParams;
   const pendingPage = parsePage(pendingPageParam);

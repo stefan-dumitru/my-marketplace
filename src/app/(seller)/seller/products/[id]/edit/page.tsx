@@ -1,8 +1,8 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import { parseSpecifications } from "@/lib/product-specs";
 import { notFound } from "next/navigation";
 import { listActiveCategories } from "@/server/data/categories";
 import { getProductForSellerEdit } from "@/server/services/product-service";
-import { getSellerContext } from "@/server/services/seller-service";
 import { ProductForm } from "@/components/seller/ProductForm";
 
 type Props = {
@@ -11,9 +11,7 @@ type Props = {
 
 export default async function EditProductPage({ params }: Props) {
   const { id } = await params;
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage();
 
   const [product, categories] = await Promise.all([
     getProductForSellerEdit(profile.id, id),

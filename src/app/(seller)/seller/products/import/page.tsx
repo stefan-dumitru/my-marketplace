@@ -1,5 +1,5 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import Link from "next/link";
-import { getSellerContext } from "@/server/services/seller-service";
 import { getImportBatches } from "@/server/services/product-import-service";
 import { Card } from "@/components/ui/card";
 import { ImportForm } from "@/components/seller/ImportForm";
@@ -24,9 +24,7 @@ type Props = {
 };
 
 export default async function ImportProductsPage({ searchParams }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage("/seller/products/import");
 
   const page = parsePage((await searchParams).page);
   const { batches, hasNextPage } = await getImportBatches(profile.id, page);

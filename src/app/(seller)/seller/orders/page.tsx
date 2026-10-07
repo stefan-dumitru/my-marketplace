@@ -1,4 +1,4 @@
-import { getSellerContext } from "@/server/services/seller-service";
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import { getSellerOrders } from "@/server/services/seller-order-service";
 import { Card } from "@/components/ui/card";
 import { SellerOrderRow } from "@/components/seller/SellerOrderRow";
@@ -10,9 +10,7 @@ type Props = {
 };
 
 export default async function SellerOrdersPage({ searchParams }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage("/seller/orders");
   const page = parsePage((await searchParams).page);
   const { sellerOrders, hasNextPage } = await getSellerOrders(profile.id, page);
 

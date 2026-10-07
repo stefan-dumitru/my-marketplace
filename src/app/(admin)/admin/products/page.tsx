@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { getPendingProductsForAdmin } from "@/server/services/product-service";
 import { ProductModerationRow } from "@/components/admin/ProductModerationRow";
 import { Card } from "@/components/ui/card";
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export default async function AdminProductsPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/products");
   const page = parsePage((await searchParams).page);
   const { products, hasNextPage } = await getPendingProductsForAdmin(page);
 

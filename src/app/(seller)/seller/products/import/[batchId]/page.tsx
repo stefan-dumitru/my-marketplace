@@ -1,6 +1,6 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getSellerContext } from "@/server/services/seller-service";
 import { getImportBatch } from "@/server/services/product-import-service";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -31,9 +31,7 @@ type Props = {
 };
 
 export default async function ImportBatchDetailPage({ params }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage();
 
   const { batchId } = await params;
   const batch = await getImportBatch(profile.id, batchId);

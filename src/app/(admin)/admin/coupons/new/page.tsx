@@ -1,6 +1,8 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { CouponForm } from "@/components/admin/CouponForm";
 
-export default function NewCouponPage() {
+export default async function NewCouponPage() {
+  await requireAdminPage("/admin/coupons/new");
   return (
     <div className="flex max-w-lg flex-col gap-6">
       <h1 className="text-2xl font-semibold">New coupon</h1>

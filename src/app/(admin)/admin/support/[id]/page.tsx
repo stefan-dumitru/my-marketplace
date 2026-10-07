@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { SupportThread } from "@/components/admin/SupportThread";
 type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminSupportThreadPage({ params }: Props) {
+  await requireAdminPage();
   const { id } = await params;
   const thread = await getAdminSupportThread(id);
   if (!thread) notFound();

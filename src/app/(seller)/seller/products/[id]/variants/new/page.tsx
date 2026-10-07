@@ -1,6 +1,6 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import { notFound } from "next/navigation";
 import { getProductForSellerEdit } from "@/server/services/product-service";
-import { getSellerContext } from "@/server/services/seller-service";
 import { VariantForm } from "@/components/seller/VariantForm";
 
 type Props = {
@@ -8,9 +8,7 @@ type Props = {
 };
 
 export default async function NewVariantPage({ params }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage();
 
   const { id } = await params;
   const product = await getProductForSellerEdit(profile.id, id);

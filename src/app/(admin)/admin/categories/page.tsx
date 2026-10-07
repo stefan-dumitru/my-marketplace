@@ -1,9 +1,11 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import Link from "next/link";
 import { getCategoriesForAdmin } from "@/server/services/category-service";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
 export default async function AdminCategoriesPage() {
+  await requireAdminPage("/admin/categories");
   const categories = await getCategoriesForAdmin();
 
   return (

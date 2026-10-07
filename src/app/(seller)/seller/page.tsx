@@ -1,5 +1,5 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import Link from "next/link";
-import { getSellerContext } from "@/server/services/seller-service";
 import { listProductsForSeller } from "@/server/services/product-service";
 import { getSellerDashboard } from "@/server/services/seller-order-service";
 import { buttonVariants } from "@/components/ui/button";
@@ -15,9 +15,7 @@ type Props = {
 };
 
 export default async function SellerDashboardPage({ searchParams }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage("/seller");
   const page = parsePage((await searchParams).page);
   const [{ products, hasNextPage }, stats] = await Promise.all([
     listProductsForSeller(profile.id, page),

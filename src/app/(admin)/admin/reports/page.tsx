@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import Link from "next/link";
 import { getPlatformRevenueReport } from "@/server/services/report-service";
 import { Card } from "@/components/ui/card";
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export default async function AdminReportsPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/reports");
   const { range: rangeParam, page: pageParam } = await searchParams;
   const range: ReportRange =
     rangeParam === "this_month" || rangeParam === "last_30_days" ? rangeParam : "all";

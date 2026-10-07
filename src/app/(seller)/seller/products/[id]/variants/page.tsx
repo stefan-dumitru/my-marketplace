@@ -1,8 +1,8 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getProductForSellerEdit } from "@/server/services/product-service";
 import { getVariantsForSellerProduct } from "@/server/services/product-variant-service";
-import { getSellerContext } from "@/server/services/seller-service";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { VariantRow } from "@/components/seller/VariantRow";
@@ -12,9 +12,7 @@ type Props = {
 };
 
 export default async function ProductVariantsPage({ params }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage();
 
   const { id } = await params;
   const [product, variants] = await Promise.all([

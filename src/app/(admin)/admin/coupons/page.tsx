@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import Link from "next/link";
 import { getCouponsForAdmin } from "@/server/services/coupon-service";
 import { Card } from "@/components/ui/card";
@@ -23,6 +24,7 @@ function statusOf(coupon: { isActive: boolean; startsAt: Date | null; expiresAt:
 }
 
 export default async function AdminCouponsPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/coupons");
   const { page: pageParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
   const { coupons, hasNextPage } = await getCouponsForAdmin(page);

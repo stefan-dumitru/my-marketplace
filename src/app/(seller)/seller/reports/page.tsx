@@ -1,5 +1,5 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import Link from "next/link";
-import { getSellerContext } from "@/server/services/seller-service";
 import { getSellerSalesReport } from "@/server/services/report-service";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -29,9 +29,7 @@ type Props = {
 };
 
 export default async function SellerSalesReportPage({ searchParams }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage("/seller/reports");
 
   const { range: rangeParam, page: pageParam } = await searchParams;
   const range: ReportRange =

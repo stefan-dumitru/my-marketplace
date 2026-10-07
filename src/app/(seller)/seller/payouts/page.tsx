@@ -1,4 +1,4 @@
-import { getSellerContext } from "@/server/services/seller-service";
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import { getPayoutHistoryForSeller } from "@/server/services/payout-service";
 import { reconcileConnectStatus } from "@/server/services/connect-service";
 import { ConnectPayoutsCard } from "@/components/seller/ConnectPayoutsCard";
@@ -19,9 +19,7 @@ type Props = {
 };
 
 export default async function SellerPayoutsPage({ searchParams }: Props) {
-  // Non-null: the (seller) layout already redirected away any non-approved seller.
-  const context = await getSellerContext();
-  const profile = context!.profile!;
+  const { profile } = await requireApprovedSellerPage("/seller/payouts");
   const page = parsePage((await searchParams).page);
 
   const [payoutsEnabled, { payouts, hasNextPage }] = await Promise.all([

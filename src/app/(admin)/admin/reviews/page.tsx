@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { listReviewsForAdminModeration } from "@/server/services/review-service";
 import { ReviewModerationRow } from "@/components/admin/ReviewModerationRow";
 import { Card } from "@/components/ui/card";
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export default async function AdminReviewsPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/reviews");
   const page = parsePage((await searchParams).page);
   const { reviews, hasNextPage } = await listReviewsForAdminModeration(page);
 

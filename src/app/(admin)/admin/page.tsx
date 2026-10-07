@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import Link from "next/link";
 import { getAdminDashboard } from "@/server/services/dashboard-service";
 import { StatTile } from "@/components/dashboard/StatTile";
@@ -5,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { formatPrice } from "@/lib/format";
 
 export default async function AdminHomePage() {
+  await requireAdminPage("/admin");
   const stats = await getAdminDashboard();
 
   return (

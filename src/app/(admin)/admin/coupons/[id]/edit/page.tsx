@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { notFound } from "next/navigation";
 import { getCouponForAdminEdit } from "@/server/services/coupon-service";
 import { CouponForm } from "@/components/admin/CouponForm";
@@ -7,6 +8,7 @@ type Props = {
 };
 
 export default async function EditCouponPage({ params }: Props) {
+  await requireAdminPage();
   const { id } = await params;
   const coupon = await getCouponForAdminEdit(id);
   if (!coupon) notFound();

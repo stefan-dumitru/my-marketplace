@@ -1,7 +1,9 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { getCategoriesForAdmin } from "@/server/services/category-service";
 import { CategoryForm } from "@/components/admin/CategoryForm";
 
 export default async function NewCategoryPage() {
+  await requireAdminPage("/admin/categories/new");
   const categories = await getCategoriesForAdmin();
 
   return (

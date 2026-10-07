@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { listAuditLogEntries } from "@/server/data/audit-log";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -30,6 +31,7 @@ type Props = {
 };
 
 export default async function AdminAuditLogPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/audit-log");
   const page = parsePage((await searchParams).page);
   const rows = await listAuditLogEntries({ page });
   const { items: entries, hasNextPage } = splitPage(rows);

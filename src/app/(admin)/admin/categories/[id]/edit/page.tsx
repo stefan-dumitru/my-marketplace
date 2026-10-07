@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { notFound } from "next/navigation";
 import { getCategoriesForAdmin, getCategoryForAdmin } from "@/server/services/category-service";
 import { CategoryForm } from "@/components/admin/CategoryForm";
@@ -7,6 +8,7 @@ type Props = {
 };
 
 export default async function EditCategoryPage({ params }: Props) {
+  await requireAdminPage();
   const { id } = await params;
 
   const [category, categories] = await Promise.all([

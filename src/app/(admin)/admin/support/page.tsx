@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -7,6 +8,7 @@ import { getAdminSupportInbox } from "@/server/services/support-service";
 type Props = { searchParams: Promise<{ status?: string; page?: string }> };
 
 export default async function AdminSupportPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/support");
   const params = await searchParams;
   const status = params.status === "closed" ? "closed" : "open";
   const page = parsePage(params.page);

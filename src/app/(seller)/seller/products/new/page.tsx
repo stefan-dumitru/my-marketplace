@@ -1,7 +1,9 @@
+import { requireApprovedSellerPage } from "@/lib/page-guards";
 import { listActiveCategories } from "@/server/data/categories";
 import { ProductForm } from "@/components/seller/ProductForm";
 
 export default async function NewProductPage() {
+  await requireApprovedSellerPage("/seller/products/new");
   const categories = await listActiveCategories();
 
   return (

@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/page-guards";
 import { getPayoutHistoryForAdmin } from "@/server/services/payout-service";
 import { PayoutRow } from "@/components/admin/PayoutRow";
 import { RunPayoutBatchButton } from "@/components/admin/RunPayoutBatchButton";
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export default async function AdminPayoutsPage({ searchParams }: Props) {
+  await requireAdminPage("/admin/payouts");
   const page = parsePage((await searchParams).page);
   const { payouts, hasNextPage } = await getPayoutHistoryForAdmin(page);
 
