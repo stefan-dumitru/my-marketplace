@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "search:reindex": "tsx scripts/reindex-search.ts",
-    "products:specs": "tsx scripts/product-specifications.ts"
+    "products:specs": "tsx scripts/product-specifications.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -48,6 +49,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^26",

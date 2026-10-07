@@ -45,3 +45,11 @@ export async function peekRateLimitCount(key: string): Promise<number> {
   if (!bucket || bucket.windowEnds <= new Date()) return 0;
   return bucket.count;
 }
+
+/**
+ * Clears a bucket outright. Used on a successful login: only failed guesses should count toward the
+ * lockout, otherwise a real user signing in from a few devices gets CAPTCHA'd and then locked out.
+ */
+export async function resetRateLimit(key: string): Promise<void> {
+  await prisma.rateLimitBucket.deleteMany({ where: { key } });
+}

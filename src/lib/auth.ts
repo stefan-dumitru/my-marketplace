@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { getUserByEmail, getUserById } from "@/server/data/users";
-import { checkRateLimit, peekRateLimitCount } from "@/server/data/rate-limit";
+import { checkRateLimit, peekRateLimitCount, resetRateLimit } from "@/server/data/rate-limit";
 import { loginSchema } from "@/lib/validations/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { resolveOAuthUser } from "@/server/services/auth-service";
@@ -133,6 +133,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // no-enumeration rule, which only protects unauthenticated guesses.
           throw new AccountSuspendedError();
         }
+
+        // A correct password ends the "guessing" streak: only failures should count toward the
+        // CAPTCHA threshold and the lockout (see resetRateLimit).
+        await resetRateLimit(`login:${email}`);
 
         return {
           id: user.id,

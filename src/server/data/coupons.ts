@@ -62,14 +62,16 @@ export function findUnpaidOrderHoldingCoupon(userId: string, couponId: string) {
  * then sees the first one's redemption row when it counts per-user usage.
  */
 export async function reserveCouponRedemption(tx: Prisma.TransactionClient, couponId: string) {
+  // Prisma stores DateTime as UTC in `timestamp without time zone`, so "now" must be UTC too —
+  // plain now() is converted to the session's timezone and skews every comparison by its offset.
   const updated = await tx.$executeRaw`
     UPDATE coupons
-    SET "redemptionCount" = "redemptionCount" + 1, "updatedAt" = now()
+    SET "redemptionCount" = "redemptionCount" + 1, "updatedAt" = (now() AT TIME ZONE 'UTC')
     WHERE id = ${couponId}
       AND "isActive" = true
       AND ("maxRedemptionsTotal" IS NULL OR "redemptionCount" < "maxRedemptionsTotal")
-      AND ("startsAt" IS NULL OR "startsAt" <= now())
-      AND ("expiresAt" IS NULL OR "expiresAt" > now())
+      AND ("startsAt" IS NULL OR "startsAt" <= (now() AT TIME ZONE 'UTC'))
+      AND ("expiresAt" IS NULL OR "expiresAt" > (now() AT TIME ZONE 'UTC'))
   `;
   return updated === 1;
 }
