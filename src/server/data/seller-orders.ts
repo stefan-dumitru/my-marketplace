@@ -44,22 +44,26 @@ export function getSellerOrderByIdForSeller(sellerId: string, sellerOrderId: str
 
 /**
  * Verify-then-update, mirroring products.ts's exact pattern: ownership AND state eligibility
- * (must currently be "confirmed") are both checked in the scoped read before writing.
+ * (currently "confirmed", with a tracking number created together with its FAN Courier label) are
+ * all checked in the scoped read before writing. The tracking number is never supplied by the
+ * caller — it can only be the one stored when the label was generated.
  */
-export async function markSellerOrderShippedForSeller(
-  sellerId: string,
-  sellerOrderId: string,
-  trackingNumber: string
-) {
-  const owned = await prisma.sellerOrder.findFirst({
-    where: { id: sellerOrderId, sellerId, status: "confirmed" },
+export async function markSellerOrderShippedForSeller(sellerId: string, sellerOrderId: string) {
+  const eligible = await prisma.sellerOrder.findFirst({
+    where: {
+      id: sellerOrderId,
+      sellerId,
+      status: "confirmed",
+      trackingNumber: { not: null },
+      labelUrl: { not: null },
+    },
     select: { id: true },
   });
-  if (!owned) return null;
+  if (!eligible) return null;
 
   return prisma.sellerOrder.update({
     where: { id: sellerOrderId },
-    data: { status: "shipped", shippedAt: new Date(), trackingNumber },
+    data: { status: "shipped", shippedAt: new Date() },
     include: SELLER_ORDER_INCLUDE,
   });
 }

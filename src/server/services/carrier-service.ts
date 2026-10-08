@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { logger } from "@/lib/logger";
 import { queueEmail } from "@/lib/email";
 import { createFanCourierClient, FanCourierAPIError, type FanCourierShipmentRequest } from "@/lib/fancourier";
@@ -119,6 +120,10 @@ export async function generateShippingLabel(
       { err, sellerOrderId: input.sellerOrderId },
       "Failed to generate shipping label"
     );
+    // The unique index on label tracking numbers: this number is already attached to another order.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return { ok: false, error: "This tracking number is already attached to another order." };
+    }
     return {
       ok: false,
       error:

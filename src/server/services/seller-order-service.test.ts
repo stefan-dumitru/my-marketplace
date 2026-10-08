@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
-import * as carrierService from "@/server/services/carrier-service";
 import { markShipped, markDelivered, cancelSellerOrder } from "@/server/services/seller-order-service";
 import { createBuyer, createApprovedSeller, createCategory, createActiveProduct, placeOrder } from "@test/helpers";
 
@@ -18,46 +17,90 @@ async function placeOrderAndGetSellerOrder(buyerId: string, sellerId: string, ca
   return { product, order, sellerOrder };
 }
 
-// FAN Courier lookups are mocked: any number starting with "TRACK" is a known AWB.
-vi.mock("@/server/services/carrier-service", () => ({
-  fetchTracking: vi.fn(async (n: string) =>
-    n.startsWith("TRACK")
-      ? { ok: true as const, status: "REGISTERED", lastUpdate: new Date(), events: [] }
-      : { ok: false as const, error: "not found" }
-  ),
-}));
+// What generating a FAN Courier label does to the order: stores the AWB together with the label route.
+async function withLabel(sellerOrderId: string, awb: string) {
+  return prisma.sellerOrder.update({
+    where: { id: sellerOrderId },
+    data: { trackingNumber: awb, labelUrl: `/api/seller/orders/${sellerOrderId}/label` },
+  });
+}
 
-describe("markShipped carrier verification", () => {
-  it("rejects a tracking number FAN Courier doesn't know and leaves the order confirmed", async () => {
+describe("markShipped only ships with the label's tracking number", () => {
+  it("refuses an order that has no label yet, with a message that says what to do", async () => {
     const buyer = await createBuyer();
     const { profile } = await createApprovedSeller();
     const category = await createCategory();
     const admin = await createBuyer();
     const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
 
-    const result = await markShipped(profile.id, sellerOrder.id, { trackingNumber: "NOPE999" }, admin.id);
+    const result = await markShipped(profile.id, sellerOrder.id, admin.id);
 
-    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({ ok: false, formError: expect.stringContaining("Generate the shipping label first") });
     const after = await prisma.sellerOrder.findUniqueOrThrow({ where: { id: sellerOrder.id } });
     expect(after.status).toBe("confirmed");
+    expect(after.shippedAt).toBeNull();
   });
 
-  it("trusts the number from a label generated here without a carrier lookup", async () => {
+  it("refuses a hand-typed legacy number that has no label behind it", async () => {
     const buyer = await createBuyer();
     const { profile } = await createApprovedSeller();
     const category = await createCategory();
     const admin = await createBuyer();
     const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
-    await prisma.sellerOrder.update({
-      where: { id: sellerOrder.id },
-      data: { trackingNumber: "9999", labelUrl: `/api/seller/orders/${sellerOrder.id}/label` },
-    });
-    vi.mocked(carrierService.fetchTracking).mockClear();
+    await prisma.sellerOrder.update({ where: { id: sellerOrder.id }, data: { trackingNumber: "TYPED-BY-HAND" } });
 
-    const result = await markShipped(profile.id, sellerOrder.id, { trackingNumber: "9999" }, admin.id);
+    const result = await markShipped(profile.id, sellerOrder.id, admin.id);
+
+    expect(result.ok).toBe(false);
+    expect((await prisma.sellerOrder.findUniqueOrThrow({ where: { id: sellerOrder.id } })).status).toBe("confirmed");
+  });
+
+  it("ships with the label's number, keeps it unchanged, audits it and tells the buyer", async () => {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const admin = await createBuyer();
+    const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
+    await withLabel(sellerOrder.id, "2228300120233");
+
+    const result = await markShipped(profile.id, sellerOrder.id, admin.id);
 
     expect(result.ok).toBe(true);
-    expect(carrierService.fetchTracking).not.toHaveBeenCalled();
+    const after = await prisma.sellerOrder.findUniqueOrThrow({ where: { id: sellerOrder.id } });
+    expect(after).toMatchObject({ status: "shipped", trackingNumber: "2228300120233" });
+    expect(after.shippedAt).not.toBeNull();
+    const log = await prisma.auditLog.findFirstOrThrow({ where: { action: "seller_order_shipped", entityId: sellerOrder.id } });
+    expect(log.afterValue).toMatchObject({ status: "shipped", trackingNumber: "2228300120233" });
+    const note = await prisma.notification.findFirstOrThrow({ where: { userId: buyer.id, type: "order_shipped" } });
+    expect(note.body).toContain("2228300120233");
+  });
+});
+
+describe("label tracking numbers are unique", () => {
+  async function twoOrders() {
+    const buyer = await createBuyer();
+    const { profile } = await createApprovedSeller();
+    const category = await createCategory();
+    const a = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
+    const b = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
+    return { a: a.sellerOrder, b: b.sellerOrder };
+  }
+
+  it("will not attach one label number to two orders", async () => {
+    const { a, b } = await twoOrders();
+    await withLabel(a.id, "SAME-AWB");
+
+    await expect(withLabel(b.id, "SAME-AWB")).rejects.toMatchObject({ code: "P2002" });
+    expect((await prisma.sellerOrder.findUniqueOrThrow({ where: { id: b.id } })).trackingNumber).toBeNull();
+  });
+
+  it("does not disturb older orders whose number was typed by hand", async () => {
+    const { a, b } = await twoOrders();
+
+    await prisma.sellerOrder.update({ where: { id: a.id }, data: { trackingNumber: "LEGACY-1" } });
+    await expect(
+      prisma.sellerOrder.update({ where: { id: b.id }, data: { trackingNumber: "LEGACY-1" } })
+    ).resolves.toBeTruthy();
   });
 });
 
@@ -70,7 +113,8 @@ describe("markShipped -> markDelivered", () => {
     const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
     expect(sellerOrder.status).toBe("confirmed");
 
-    const shipResult = await markShipped(profile.id, sellerOrder.id, { trackingNumber: "TRACK123" }, admin.id);
+    await withLabel(sellerOrder.id, "TRACK123");
+    const shipResult = await markShipped(profile.id, sellerOrder.id, admin.id);
     expect(shipResult.ok).toBe(true);
     const afterShip = await prisma.sellerOrder.findUniqueOrThrow({ where: { id: sellerOrder.id } });
     expect(afterShip.status).toBe("shipped");
@@ -106,10 +150,11 @@ describe("markShipped -> markDelivered", () => {
     const category = await createCategory();
     const admin = await createBuyer();
     const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, profile.id, category.id);
-    await markShipped(profile.id, sellerOrder.id, { trackingNumber: "TRACK123" }, admin.id);
+    await withLabel(sellerOrder.id, "TRACK123");
+    await markShipped(profile.id, sellerOrder.id, admin.id);
     await markDelivered(profile.id, sellerOrder.id, admin.id);
 
-    const result = await markShipped(profile.id, sellerOrder.id, { trackingNumber: "TRACK456" }, admin.id);
+    const result = await markShipped(profile.id, sellerOrder.id, admin.id);
 
     expect(result.ok).toBe(false);
   });
@@ -122,7 +167,8 @@ describe("markShipped -> markDelivered", () => {
     const admin = await createBuyer();
     const { sellerOrder } = await placeOrderAndGetSellerOrder(buyer.id, owner.id, category.id);
 
-    const result = await markShipped(intruder.id, sellerOrder.id, { trackingNumber: "TRACK123" }, admin.id);
+    await withLabel(sellerOrder.id, "TRACK123");
+    const result = await markShipped(intruder.id, sellerOrder.id, admin.id);
 
     expect(result.ok).toBe(false);
     const unchanged = await prisma.sellerOrder.findUniqueOrThrow({ where: { id: sellerOrder.id } });

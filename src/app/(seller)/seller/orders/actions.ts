@@ -13,19 +13,15 @@ import {
 } from "@/server/services/seller-order-service";
 import { getSellerContext } from "@/server/services/seller-service";
 import { checkRateLimit } from "@/server/data/rate-limit";
-import type { ShipOrderInput } from "@/lib/validations/seller-order";
 
-export async function markShippedAction(
-  sellerOrderId: string,
-  input: ShipOrderInput
-): Promise<ShipOrderResult> {
+export async function markShippedAction(sellerOrderId: string): Promise<ShipOrderResult> {
   // Independently re-verified here — this Action is its own entry point, not protected by the
   // (seller) layout's redirect just because the page that rendered its form was.
   const context = await getSellerContext();
   if (!context) redirect("/auth/login?callbackUrl=/seller/orders");
   if (!context.profile || context.profile.status !== "approved") redirect("/sell");
 
-  const result = await markShipped(context.profile.id, sellerOrderId, input, context.session.user.id);
+  const result = await markShipped(context.profile.id, sellerOrderId, context.session.user.id);
   revalidatePath("/seller/orders");
   revalidatePath(`/seller/orders/${sellerOrderId}`);
   return result;

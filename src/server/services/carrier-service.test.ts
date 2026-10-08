@@ -147,6 +147,46 @@ describe("Carrier Service", () => {
     });
   });
 
+  describe("one tracking number per order", () => {
+    it("refuses to attach a number that another order already carries, leaving the second order untouched", async () => {
+      const seller = await createApprovedSeller();
+      const buyer = await createBuyer();
+      const category = await createCategory();
+      const product = await createActiveProduct(seller.profile.id, category.id, { price: 100, stockQty: 10 });
+      const first = await createOrder(buyer.id, seller.profile.id, product.variants[0].id);
+      const second = await createOrder(buyer.id, seller.profile.id, product.variants[0].id);
+      await carrierConfig.upsertCarrierConfig("fancourier", "test", "test-user", "test-pass", "7032158");
+      vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.includes("/login")) {
+          return Response.json({ status: "success", data: { token: "tok", expiresAt: "2099-01-01 00:00:00" } });
+        }
+        if (url.includes("/reports/counties")) return Response.json({ status: "success", data: [{ name: "Bucuresti" }] });
+        if (url.includes("/reports/localities")) return Response.json({ status: "success", data: [{ name: "Bucuresti" }] });
+        if (url.includes("/intern-awb")) return Response.json({ response: [{ awbNumber: 777000111, errors: null }] });
+        return new Response("unexpected " + url, { status: 500 });
+      });
+      const input = (id: string) => ({
+        sellerOrderId: id,
+        recipientName: "John Doe",
+        recipientPhone: "0723456789",
+        recipientCity: "Bucharest",
+        recipientCounty: "Bucharest",
+        recipientPostalCode: "010101",
+        recipientAddress: "Main St 1",
+      });
+
+      const a = await carrierService.generateShippingLabel(input(first.id));
+      const b = await carrierService.generateShippingLabel(input(second.id));
+
+      expect(a.ok).toBe(true);
+      expect(b).toEqual({ ok: false, error: "This tracking number is already attached to another order." });
+      const stored = await prisma.sellerOrder.findUniqueOrThrow({ where: { id: second.id } });
+      expect(stored.trackingNumber).toBeNull();
+      expect(stored.labelUrl).toBeNull();
+    });
+  });
+
   describe("updateTrackingStatus", () => {
     it("updates the status when it changes", async () => {
       const seller = await createApprovedSeller();

@@ -34,7 +34,6 @@ async function main() {
       data: { ...USERS.seller, passwordHash, role: "seller", emailVerifiedAt: verified },
     });
     await prisma.user.create({ data: { ...USERS.admin, passwordHash, role: "admin", emailVerifiedAt: verified } });
-    void buyer;
 
     const seller = await prisma.sellerProfile.create({
       data: {
@@ -97,7 +96,57 @@ async function main() {
       },
     });
 
-    const info: SeedInfo = { mouseId: mouse.id, lampId: lamp.id, keyboardId: keyboard.id };
+    // A paid order waiting for the seller to ship it: confirmed, with no label (and so no tracking number) yet.
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: "ORD-E2E-0001",
+        buyerId: buyer.id,
+        status: "paid",
+        totalAmount: 40,
+        shippingAmount: 15,
+        shippingAddressSnapshot: {
+          recipientName: "Maria Popescu",
+          line1: "Strada Exemplu 10",
+          line2: "",
+          city: "Cluj-Napoca",
+          county: "Cluj",
+          postalCode: "400001",
+          country: "Romania",
+          phone: "0723456789",
+        },
+        payment: { create: { amount: 40, status: "succeeded", paidAt: verified } },
+        sellerOrders: {
+          create: [
+            {
+              sellerId: seller.id,
+              status: "confirmed",
+              subtotal: 25,
+              commissionAmount: 2.5,
+              payoutAmount: 37.5,
+              items: {
+                create: [
+                  {
+                    productVariantId: (await prisma.productVariant.findFirstOrThrow({ where: { productId: mouse.id } })).id,
+                    productNameSnapshot: PRODUCTS.mouse.name,
+                    unitPriceSnapshot: 25,
+                    quantity: 1,
+                    lineTotal: 25,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      include: { sellerOrders: true },
+    });
+
+    const info: SeedInfo = {
+      mouseId: mouse.id,
+      lampId: lamp.id,
+      keyboardId: keyboard.id,
+      confirmedSellerOrderId: order.sellerOrders[0].id,
+    };
     fs.writeFileSync(SEED_FILE, JSON.stringify(info));
   } finally {
     await prisma.$disconnect();

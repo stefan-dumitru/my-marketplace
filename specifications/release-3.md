@@ -364,10 +364,12 @@ carrier-driven notifications when the parcel moves.
 
 ### As built (deviations from the plan above)
 
-- **Strict tracking numbers.** A number is only accepted for "mark as shipped" if it came from a
-  label generated in-app, or FAN Courier's tracking API knows it under our client id. The manual
-  entry fallback with a warning was dropped in favor of strictness; other carriers are not
-  supported.
+- **Tracking numbers only come from labels.** The seller cannot type a tracking number at all: the
+  "Mark as shipped" step shows the number created with the label (read-only) and is disabled until a
+  label exists. The server enforces the same rule (an order ships only if it has both a tracking
+  number and a label route), and a unique index guarantees a label's tracking number can belong to
+  only one order. Older orders whose number was typed by hand are unaffected (the index covers rows
+  with a label). Other carriers and AWBs created outside the app are not supported.
 - **FAN Courier API v2.0 reality:** one host (`api.fancourier.ro`), bearer token from `POST /login`
   (24h), shipments via `POST /intern-awb`, label PDF via `GET /awb/label`, tracking via
   `GET /reports/awb/tracking`. There is no sandbox host, so "test" vs "production" are two

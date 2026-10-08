@@ -102,16 +102,9 @@ export default async function SellerOrderDetailPage({ params }: Props) {
 
       {sellerOrder.status === "confirmed" && (
         <Card className="flex flex-col gap-4 p-4">
-          <div>
-            <p className="mb-2 text-sm font-medium">Mark as shipped</p>
-            <ShipOrderForm
-              sellerOrderId={sellerOrder.id}
-              defaultTrackingNumber={sellerOrder.trackingNumber ?? undefined}
-            />
-          </div>
           {sellerOrder.labelUrl ? (
-            <div className="border-t border-border pt-4 text-sm">
-              <p className="mb-1 font-medium">Shipping label</p>
+            <div className="text-sm">
+              <p className="mb-1 font-medium">1. Shipping label</p>
               <a
                 href={sellerOrder.labelUrl}
                 target="_blank"
@@ -120,13 +113,10 @@ export default async function SellerOrderDetailPage({ params }: Props) {
               >
                 Download PDF label
               </a>
-              <p className="mt-1 text-muted-foreground">
-                Tracking number {sellerOrder.trackingNumber} is filled in above — confirm to mark as shipped.
-              </p>
             </div>
           ) : (
-            <div className="border-t border-border pt-4">
-              <p className="mb-2 text-sm font-medium">Generate FanCourier label</p>
+            <div>
+              <p className="mb-2 text-sm font-medium">1. Generate FanCourier label</p>
               <GenerateShippingLabelForm
                 sellerOrderId={sellerOrder.id}
                 defaultRecipientName={address.recipientName}
@@ -139,6 +129,13 @@ export default async function SellerOrderDetailPage({ params }: Props) {
               />
             </div>
           )}
+          <div className="border-t border-border pt-4">
+            <p className="mb-2 text-sm font-medium">2. Mark as shipped</p>
+            <ShipOrderForm
+              sellerOrderId={sellerOrder.id}
+              trackingNumber={sellerOrder.labelUrl ? sellerOrder.trackingNumber : null}
+            />
+          </div>
           <div className="border-t border-border pt-4">
             <p className="mb-2 text-sm font-medium">Cancel order</p>
             <p className="mb-2 text-sm text-muted-foreground">

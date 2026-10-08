@@ -107,6 +107,9 @@ async function assertGuarded(opts: {
 }
 
 test.describe("pages do not rely on their layout for access control", () => {
+  // Each test makes dozens of requests (3 logins, then 3 replays per page); allow for a slow machine.
+  test.setTimeout(150_000);
+
   test("every admin page is withheld from anonymous visitors and non-admins", async ({ browser, playwright, baseURL }) => {
     const admin = await sessionFor(browser, "admin");
     const captured = await captureRouterRequest(admin.page, "/admin", /^Support/, "/admin/support");

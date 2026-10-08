@@ -35,4 +35,4 @@ export const PRODUCTS = {
 
 export const SEED_FILE = "e2e/.seed.json";
 
-export type SeedInfo = { mouseId: string; lampId: string; keyboardId: string };
+export type SeedInfo = { mouseId: string; lampId: string; keyboardId: string; confirmedSellerOrderId: string };

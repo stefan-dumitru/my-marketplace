@@ -1,7 +1,6 @@
 import "server-only";
 import { stripe } from "@/lib/stripe";
 import { queueEmail } from "@/lib/email";
-import { shipOrderSchema, type ShipOrderInput } from "@/lib/validations/seller-order";
 import {
   cancelSellerOrderTransaction,
   getSellerOrderByIdForSeller,
@@ -14,7 +13,6 @@ import {
 import { createAuditLog } from "@/server/data/audit-log";
 import { getSellerDashboardStats } from "@/server/data/dashboard";
 import { notifyUser } from "@/server/services/notification-service";
-import { fetchTracking } from "@/server/services/carrier-service";
 import { splitPage } from "@/lib/pagination";
 import { toCents, fromCents } from "@/lib/coupons";
 
@@ -30,9 +28,7 @@ function paidCents(
   return opts.includeShipping ? goods + toCents(Number(so.shippingCharged)) : goods;
 }
 
-export type ShipOrderResult =
-  | { ok: true }
-  | { ok: false; fieldErrors?: Partial<Record<keyof ShipOrderInput, string>>; formError?: string };
+export type ShipOrderResult = { ok: true } | { ok: false; formError?: string };
 
 export type CancelOrderResult = { ok: true } | { ok: false; formError: string };
 export type ResolveReturnResult = { ok: true } | { ok: false; formError: string };
@@ -54,36 +50,20 @@ export function getSellerOrderForSeller(sellerId: string, sellerOrderId: string)
 export async function markShipped(
   sellerId: string,
   sellerOrderId: string,
-  input: ShipOrderInput,
   actorUserId: string
 ): Promise<ShipOrderResult> {
-  const parsed = shipOrderSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, formError: "Please fix the errors above and try again." };
-  }
-
-  // Strict carrier verification: a tracking number is only accepted if it came from a label
-  // generated here, or if FAN Courier itself knows it (looked up under our client id).
+  // An order ships only with the tracking number created together with its FAN Courier label:
+  // nothing typed by the seller is ever accepted. Distinguish "no label yet" (the seller can fix
+  // that) from "not shippable at all" so the message tells them what to do.
   const existing = await getSellerOrderByIdForSeller(sellerId, sellerOrderId);
-  if (existing?.status === "confirmed") {
-    const fromOurLabel = !!existing.labelUrl && existing.trackingNumber === parsed.data.trackingNumber;
-    if (!fromOurLabel) {
-      const check = await fetchTracking(parsed.data.trackingNumber);
-      if (!check.ok) {
-        return {
-          ok: false,
-          formError:
-            "This tracking number couldn't be verified with FAN Courier. Generate a label above, or enter a valid FAN Courier AWB.",
-        };
-      }
-    }
+  if (existing?.status === "confirmed" && (!existing.labelUrl || !existing.trackingNumber)) {
+    return {
+      ok: false,
+      formError: "Generate the shipping label first — an order can only be shipped with the tracking number created with its label.",
+    };
   }
 
-  const updated = await markSellerOrderShippedForSeller(
-    sellerId,
-    sellerOrderId,
-    parsed.data.trackingNumber
-  );
+  const updated = await markSellerOrderShippedForSeller(sellerId, sellerOrderId);
   if (!updated) {
     return { ok: false, formError: "This order can't be marked shipped right now." };
   }
@@ -95,13 +75,13 @@ export async function markShipped(
     entityType: "SellerOrder",
     entityId: sellerOrderId,
     beforeValue: { status: "confirmed" },
-    afterValue: { status: "shipped", trackingNumber: parsed.data.trackingNumber },
+    afterValue: { status: "shipped", trackingNumber: updated.trackingNumber },
   });
 
   const buyerEmail = updated.order.buyer.email;
   const orderNumber = updated.order.orderNumber;
   const shippedTitle = "Your order has shipped";
-  const shippedBody = `Your order ${orderNumber} has shipped${parsed.data.trackingNumber ? ` — tracking number ${parsed.data.trackingNumber}` : ""}.`;
+  const shippedBody = `Your order ${orderNumber} has shipped${updated.trackingNumber ? ` — tracking number ${updated.trackingNumber}` : ""}.`;
   await queueEmail({
     to: buyerEmail,
     subject: shippedTitle,
